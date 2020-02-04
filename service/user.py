@@ -7,7 +7,7 @@ from sqlalchemy import Column, String
 
 
 Base = declarative_base()
-engine = create_engine('sqlite:///D:\\OneDrive - University of Wisconsin-La Crosse\\CS 744\\Code\\CS744\\user.db')
+engine = create_engine('sqlite:///../user.db')
 Session = sessionmaker()
 Session.configure(bind=engine)
 
