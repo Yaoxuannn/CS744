@@ -60,4 +60,4 @@ def options_handler():
         pass
 
 
-app.run(debug=True)
+app.run(host="0.0.0.0", debug=True)
