@@ -21,7 +21,7 @@ CONFIG = {'AMQP_URI': "amqp://guest:guest@localhost"}
 def user_login():
     if not request.json:
         return pack_response(10002, "Missing login data")
-    if not check_params(request.json, ['username', 'password']):
+    if 'username' or 'password' not in request.json:
         return pack_response(10002, "Argument format error")
     username = request.json['username']
     password = request.json['password']
@@ -93,4 +93,5 @@ def options_handler():
         pass
 
 
-app.run(host="0.0.0.0", debug=True)
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=6000, debug=True)
