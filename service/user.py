@@ -1,9 +1,12 @@
+# coding=utf-8
 from uuid import uuid4
 from nameko.rpc import rpc
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import Column, String
+from hashlib import sha1
+from time import time
 
 
 Base = declarative_base()
@@ -41,12 +44,18 @@ def generate_password():
 class UserService(object):
     name = "user_service"
 
+    sha1 = sha1()
+
     @staticmethod
     def check_login_status():
         pass
 
     def login_code_validate(self):
         pass
+
+    @rpc
+    def generate_login_code(self):
+        return uuid4().hex[:4]
 
     @rpc
     def user_registry(self, user_info):
@@ -77,9 +86,8 @@ class UserService(object):
             session.close()
             return 10002, "Non-existed user", None
         if session.query(UserSecret.user_name).filter(UserSecret.user_name == username, UserSecret.secret == password).first():
-            # TODO: 生成用户token
-            token = ""
-            # TODO: 写入数据库
+            self.sha1.update((username + str(time())).encode())
+            token = self.sha1.digest().hex()
             right_user = session.query(User).filter(User.user_name == username).first()
             right_user.user_token = token
             session.commit()

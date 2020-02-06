@@ -1,6 +1,6 @@
+# coding=utf-8
 from flask import Flask, request, jsonify, session
 from flasgger import Swagger
-import os
 from nameko.standalone.rpc import ClusterRpcProxy
 
 '''
@@ -8,7 +8,6 @@ from nameko.standalone.rpc import ClusterRpcProxy
 10002	Arguments error
 10003	Data error
 20000	Normal
-
 '''
 
 app = Flask(__name__)
@@ -21,15 +20,16 @@ CONFIG = {'AMQP_URI': "amqp://guest:guest@localhost"}
 def user_login():
     if not request.json:
         return pack_response(10002, "Missing login data")
-    if 'username' not in request.json or 'password' not in request.json:
+    if not check_params(request.get_json(), ["username", "password"]):
         return pack_response(10002, "Argument format error")
     username = request.json['username']
     password = request.json['password']
     with ClusterRpcProxy(CONFIG) as rpc:
         status, message, token = rpc.user_service.user_login(username, password)
+        code = rpc.user_service.generate_login_code()
     if status == 20000:
-        session[token] = "Logged in"
-    return pack_response(status, message, data={"token": token})
+        session[token] = code
+    return pack_response(status, message, data={"token": token, "code": code})
 
 
 @app.route("/api/v1/logout", methods=['GET'])
@@ -53,8 +53,8 @@ def user_register():
 
 
 def check_params(params, essentials):
-    for k, v in params.items():
-        if k in essentials and not v:
+    for n in essentials:
+        if n not in params:
             return False
     return True
 
