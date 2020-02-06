@@ -50,7 +50,8 @@ class UserService(object):
     def check_login_status():
         pass
 
-    def login_code_validate(self):
+    @rpc
+    def login_code_validate(self, user_token, login_code):
         pass
 
     @rpc
@@ -58,17 +59,18 @@ class UserService(object):
         return uuid4().hex[:4]
 
     @rpc
-    def user_registry(self, user_info):
+    def user_register(self, user_info):
         session = Session()
         existed_username = session.query(User.user_name).filter(User.user_name == user_info['username']).first()
         if existed_username:
-            return 10002, "Username has already been taken"
+            return 10002, "Username has already been taken", None
         new_user = User(
             user_fullname=user_info['fullname'],
             user_name=user_info['username'],
             user_type=user_info['usertype'],
             user_email=user_info['email'],
             user_phone=user_info['mobile'],
+            user_status="processing",
             preferred_info=user_info['preferred'] or "email"
         )
         session.add(new_user)
@@ -85,6 +87,8 @@ class UserService(object):
         if not existed_user:
             session.close()
             return 10002, "Non-existed user", None
+        if session.query(User.user_status).filter(User.user_name == username).first() != "Verified":
+            return 10002, "User is not verified", None
         if session.query(UserSecret.user_name).filter(UserSecret.user_name == username, UserSecret.secret == password).first():
             self.sha1.update((username + str(time())).encode())
             token = self.sha1.digest().hex()

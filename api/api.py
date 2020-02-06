@@ -26,7 +26,7 @@ def user_login():
     password = request.json['password']
     with ClusterRpcProxy(CONFIG) as rpc:
         status, message, token = rpc.user_service.user_login(username, password)
-        code = rpc.user_service.generate_login_code()
+        code = rpc.user_service.generate_login_code() if status == 20000 else None
     if status == 20000:
         session[token] = code
     return pack_response(status, message, data={"token": token, "code": code})
@@ -35,14 +35,17 @@ def user_login():
 @app.route("/api/v1/logout", methods=['GET'])
 def user_logout():
     if check_params(request.args, ['token']):
-        session.pop(request.args.get("token"))
-        return pack_response()
+        token = request.args.get("token")
+        if token in session:
+            session.pop(token)
+            return pack_response()
+        return pack_response(10002, "User has not logged in")
     return pack_response(10002, "Missing argument")
 
 
 @app.route("/api/v1/register", methods=['POST'])
 def user_register():
-    if check_params(request.json, ['fullname', "username", "usertype", "email", "mobile", "preferred"]):
+    if check_params(request.get_json(), ['fullname', "username", "usertype", "email", "mobile", "preferred"]):
         if not request.json['email'] and not request.json['mobile']:
             return pack_response(10002, "Email and mobile must be provided at least one.")
         if request.json['usertype'] not in ['physician', 'nurse', 'patient']:
@@ -50,6 +53,23 @@ def user_register():
         with ClusterRpcProxy(CONFIG) as rpc:
             status, message, event_id = rpc.user_service.user_register(request.json)
         return pack_response(status, message, data={"eventID": event_id})
+    return pack_response(10002, "Missing argument")
+
+
+@app.route("/api/v1/validateCode", methods=['POST'])
+def validate_code():
+    if check_params(request.get_json(), ['token', 'code', 'ts']):
+        with ClusterRpcProxy(CONFIG) as rpc:
+            token = request.json['token']
+            login_code = request.json['code']
+            ts = request.json['ts']
+            # status, message, loginsuccess = rpc.user_service.validate_login_code()
+            if token not in session:
+                return pack_response(10001, "Wrong token", data={"loginsuccess": 0})
+            if session[token] == login_code:
+                return pack_response(data={"loginsuccess": 1})
+            return pack_response(10001, "Wrong code", data={"loginsuccess": 0})
+    return pack_response(10002, "Missing argument")
 
 
 def check_params(params, essentials):
