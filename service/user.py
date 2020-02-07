@@ -1,13 +1,15 @@
 # coding=utf-8
-from uuid import uuid4
-from nameko.rpc import rpc
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, String
+import random
+import string
 from hashlib import sha1
 from time import time
+from uuid import uuid4
 
+from nameko.rpc import rpc
+from sqlalchemy import Column, String
+from sqlalchemy import create_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
 
 Base = declarative_base()
 engine = create_engine('sqlite:///../user.db')
@@ -51,12 +53,16 @@ class UserService(object):
         pass
 
     @rpc
-    def login_code_validate(self, user_token, login_code):
-        pass
+    def login_code_validate(self, session, login_code, token, ts):
+        if token not in session:
+            return 10001, "Wrong token", 0
+        if session[token] == login_code:
+            return 20000, "OK", 1
+        return 10001, "Wrong code", 0
 
     @rpc
     def generate_login_code(self):
-        return uuid4().hex[:4]
+        return "".join([string.digits[random.randint(0, 9)] for x in range(4)])
 
     @rpc
     def user_register(self, user_info):
@@ -100,5 +106,8 @@ class UserService(object):
         return 10001, "Wrong credential", None
 
     @rpc
-    def user_logout(self, ):
-        pass
+    def user_logout(self, session, token):
+        if token not in session:
+            return 10001, "User is not logged in"
+        session.pop(token)
+        return 20000, "OK"

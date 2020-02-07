@@ -1,3 +1,4 @@
+# coding=utf-8
 from nameko.rpc import rpc
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker

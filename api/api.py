@@ -36,10 +36,9 @@ def user_login():
 def user_logout():
     if check_params(request.args, ['token']):
         token = request.args.get("token")
-        if token in session:
-            session.pop(token)
-            return pack_response()
-        return pack_response(10002, "User has not logged in")
+        with ClusterRpcProxy(CONFIG) as rpc:
+            status, message = rpc.user_service.user_logout(session, token)
+        return pack_response(status, message)
     return pack_response(10002, "Missing argument")
 
 
@@ -63,12 +62,8 @@ def validate_code():
             token = request.json['token']
             login_code = request.json['code']
             ts = request.json['ts']
-            # status, message, loginsuccess = rpc.user_service.validate_login_code()
-            if token not in session:
-                return pack_response(10001, "Wrong token", data={"loginsuccess": 0})
-            if session[token] == login_code:
-                return pack_response(data={"loginsuccess": 1})
-            return pack_response(10001, "Wrong code", data={"loginsuccess": 0})
+            status, message, loginsuccess = rpc.user_service.validate_login_code(session, login_code, token, ts)
+            return pack_response(status, message, data={"loginsuccess": loginsuccess})
     return pack_response(10002, "Missing argument")
 
 
