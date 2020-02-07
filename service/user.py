@@ -59,6 +59,7 @@ class UserService(object):
     def validate_login_code(self, login_code, token, ts):
         session = Session()
         right_person = session.query(User).filter(User.user_token == token).first()
+        session.close()
         if not right_person:
             return 10001, "Wrong token", 0
         if not right_person.user_token:
@@ -91,6 +92,7 @@ class UserService(object):
         # TODO: 生成eventID
         event_id = ""
         session.commit()
+        session.close()
         return 20000, "OK", event_id
 
     @rpc
@@ -120,8 +122,12 @@ class UserService(object):
         return 10001, "Wrong credential", None, None
 
     @rpc
-    def user_logout(self, session, token):
-        if token not in session:
-            return 10001, "User is not logged in"
-        session.pop(token)
+    def user_logout(self, token):
+        session = Session()
+        logged_user = session.query(User).filter(User.user_token == token).first()
+        if not logged_user:
+            return 10001, "token error/user not logged in"
+        logged_user.user_token = None
+        session.commit()
+        session.close()
         return 20000, "OK"

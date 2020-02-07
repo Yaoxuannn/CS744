@@ -1,5 +1,5 @@
 # coding=utf-8
-from flask import Flask, request, jsonify, session
+from flask import Flask, request, jsonify
 from nameko.standalone.rpc import ClusterRpcProxy
 
 '''
@@ -24,17 +24,16 @@ def user_login():
     password = request.json['password']
     with ClusterRpcProxy(CONFIG) as rpc:
         status, message, token, code = rpc.user_service.user_login(username, password)
-        if status == 20000:
-            session[token] = code
+        # if status == 20000:
+        #     session[token] = code
     return pack_response(status, message, data={"token": token})
 
 
 @app.route("/api/v1/logout", methods=['GET'])
 def user_logout():
     if check_params(request.args, ['token']):
-        token = request.args.get("token")
         with ClusterRpcProxy(CONFIG) as rpc:
-            status, message = rpc.user_service.user_logout(session, token)
+            status, message = rpc.user_service.user_logout(request.args.get("token"))
         return pack_response(status, message)
     return pack_response(10002, "Missing argument")
 
