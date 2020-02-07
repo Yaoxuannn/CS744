@@ -6,6 +6,7 @@ from time import time
 from uuid import uuid4
 
 from nameko.rpc import rpc
+from nameko.standalone.rpc import ClusterRpcProxy
 from sqlalchemy import Column, String
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
@@ -15,6 +16,8 @@ Base = declarative_base()
 engine = create_engine('sqlite:///../user.db')
 Session = sessionmaker()
 Session.configure(bind=engine)
+
+CONFIG = {'AMQP_URI': "amqp://guest:guest@localhost"}
 
 
 class User(Base):
@@ -27,9 +30,9 @@ class User(Base):
     user_status = Column(String, default=0)
     user_token = Column(String, unique=True)
     user_type = Column(String, nullable=False)
-    addition1 = Column(String)
-    addition2 = Column(String)
-    preferred_info = Column(String, default="EMAIL")
+    login_code = Column(String)
+    addition = Column(String)
+    preferred_info = Column(String, default="email")
 
 
 class UserSecret(Base):
@@ -53,10 +56,14 @@ class UserService(object):
         pass
 
     @rpc
-    def login_code_validate(self, session, login_code, token, ts):
-        if token not in session:
+    def validate_login_code(self, login_code, token, ts):
+        session = Session()
+        right_person = session.query(User).filter(User.user_token == token).first()
+        if not right_person:
             return 10001, "Wrong token", 0
-        if session[token] == login_code:
+        if not right_person.user_token:
+            return 10002, "User is not logged in", 0
+        if str(right_person.login_code) == login_code:
             return 20000, "OK", 1
         return 10001, "Wrong code", 0
 
@@ -76,7 +83,7 @@ class UserService(object):
             user_type=user_info['usertype'],
             user_email=user_info['email'],
             user_phone=user_info['mobile'],
-            user_status="processing",
+            user_status="Processing",
             preferred_info=user_info['preferred'] or "email"
         )
         session.add(new_user)
@@ -92,18 +99,25 @@ class UserService(object):
         existed_user = session.query(User.user_name).filter(User.user_name == username).first()
         if not existed_user:
             session.close()
-            return 10002, "Non-existed user", None
-        if session.query(User.user_status).filter(User.user_name == username).first() != "Verified":
-            return 10002, "User is not verified", None
+            return 10002, "Non-existed user", None, None
+        if session.query(User).filter(User.user_name == username).first().user_status != "Verified":
+            return 10002, "User is not verified", None, None
         if session.query(UserSecret.user_name).filter(UserSecret.user_name == username, UserSecret.secret == password).first():
             self.sha1.update((username + str(time())).encode())
             token = self.sha1.digest().hex()
             right_user = session.query(User).filter(User.user_name == username).first()
             right_user.user_token = token
+            login_code = self.generate_login_code()
+            right_user.login_code = login_code
+            email_addr = right_user.user_email
             session.commit()
             session.close()
-            return 20000, "OK", token
-        return 10001, "Wrong credential", None
+            with ClusterRpcProxy(CONFIG) as _rpc:
+                _rpc.mail_service.send_mail(email_addr, "login verification", "Below is your login "
+                                                                              "code:<br/><b>%s</b><br/><span>Do not "
+                                                                              "share your code!<span>" % login_code)
+            return 20000, "OK", token, login_code
+        return 10001, "Wrong credential", None, None
 
     @rpc
     def user_logout(self, session, token):

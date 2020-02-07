@@ -1,6 +1,5 @@
 # coding=utf-8
 from flask import Flask, request, jsonify, session
-from flasgger import Swagger
 from nameko.standalone.rpc import ClusterRpcProxy
 
 '''
@@ -12,7 +11,6 @@ from nameko.standalone.rpc import ClusterRpcProxy
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = b'_5#y2L"F4Q8z\n\xec]/'
-Swagger(app)
 CONFIG = {'AMQP_URI': "amqp://guest:guest@localhost"}
 
 
@@ -25,11 +23,10 @@ def user_login():
     username = request.json['username']
     password = request.json['password']
     with ClusterRpcProxy(CONFIG) as rpc:
-        status, message, token = rpc.user_service.user_login(username, password)
-        code = rpc.user_service.generate_login_code() if status == 20000 else None
-    if status == 20000:
-        session[token] = code
-    return pack_response(status, message, data={"token": token, "code": code})
+        status, message, token, code = rpc.user_service.user_login(username, password)
+        if status == 20000:
+            session[token] = code
+    return pack_response(status, message, data={"token": token})
 
 
 @app.route("/api/v1/logout", methods=['GET'])
@@ -62,7 +59,7 @@ def validate_code():
             token = request.json['token']
             login_code = request.json['code']
             ts = request.json['ts']
-            status, message, loginsuccess = rpc.user_service.validate_login_code(session, login_code, token, ts)
+            status, message, loginsuccess = rpc.user_service.validate_login_code(login_code, token, ts)
             return pack_response(status, message, data={"loginsuccess": loginsuccess})
     return pack_response(10002, "Missing argument")
 

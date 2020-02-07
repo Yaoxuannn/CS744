@@ -1,11 +1,14 @@
 # coding=utf-8
 from nameko.rpc import rpc
-from flask_mail import Message, Mail
+import yagmail
+
+yag = yagmail.SMTP("camellia.userservice@gmail.com", "Camellia_service")
 
 
-@rpc
-def send_mail(app, sender, recipient, subject, content):
-    mail = Mail(app)
-    msg = Message(subject, sender=sender, recipients=[recipient])
-    msg.html = "Your code is: <br/><b>000000</b><br/><span>Do not share your code to others!</span>"
-    mail.send(msg)
+class MailService(object):
+    name = "mail_service"
+
+    @rpc
+    def send_mail(self, to, subject, content):
+        yag.send(to, subject, content)
+
