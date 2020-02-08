@@ -70,7 +70,7 @@ class UserService(object):
 
     @rpc
     def generate_login_code(self):
-        return "".join([string.digits[random.randint(0, 9)] for x in range(4)])
+        return "".join([string.digits[random.randint(0, 9)] for x in range(6)])
 
     @rpc
     def user_register(self, user_info):
