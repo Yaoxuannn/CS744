@@ -63,6 +63,25 @@ def validate_code():
     return pack_response(10002, "Missing argument")
 
 
+@app.route("/api/v1/getRegisterList", methods=['GET'])
+def get_register_list():
+    if check_params(request.args, ["token"]):
+        with ClusterRpcProxy(CONFIG) as rpc:
+            user_type = rpc.user_service.check_user_type(request.args["token"])
+            if user_type != "admin":
+                return pack_response(10001, "Not authorized")
+            register_list = rpc.event_service.get_all_events("register")
+            data = []
+            for event in register_list:
+                user_info = rpc.user_service.get_user_info(event["target"])
+                user_info.update({
+                    "registertime": event['create_time']
+                })
+                data.append(user_info)
+            return pack_response(data={"register_list": data})
+    return pack_response(10002, "Missing argument")
+
+
 def check_params(params, essentials):
     for n in essentials:
         if n not in params:
@@ -105,4 +124,4 @@ def options_handler():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=6000, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)

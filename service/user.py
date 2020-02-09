@@ -43,7 +43,7 @@ class UserSecret(Base):
 
 
 def generate_password():
-    return uuid4().hex
+    return uuid4().hex[:6]
 
 
 class UserService(object):
@@ -54,6 +54,28 @@ class UserService(object):
     @staticmethod
     def check_login_status():
         pass
+
+    @rpc
+    def check_user_type(self, token):
+        session = Session()
+        check_user = session.query(User).filter(User.user_token == token).first()
+        session.close()
+        return check_user.user_type if check_user else None
+
+    @rpc
+    def get_user_info(self, user_name):
+        session = Session()
+        check_user = session.query(User).filter(User.user_name == user_name).first()
+        if not check_user:
+            return None
+        session.close()
+        return {
+            "user_name": user_name,
+            "full_name": check_user.user_fullname,
+            "user_type": check_user.user_type,
+            "email": check_user.user_email,
+            "mobile": check_user.user_phone
+        }
 
     @rpc
     def validate_login_code(self, login_code, token, ts):
@@ -68,8 +90,8 @@ class UserService(object):
             return 20000, "OK", 1
         return 10001, "Wrong code", 0
 
-    @rpc
-    def generate_login_code(self):
+    @staticmethod
+    def generate_login_code():
         return "".join([string.digits[random.randint(0, 9)] for x in range(6)])
 
     @rpc
@@ -89,10 +111,13 @@ class UserService(object):
         )
         session.add(new_user)
         session.add(UserSecret(user_name=user_info['username'], secret=generate_password()))
-        # TODO: 生成eventID
-        event_id = ""
         session.commit()
-        session.close()
+        with ClusterRpcProxy(CONFIG) as _rpc:
+            event_id = _rpc.event_service.add_event(
+                event_type="register",
+                target=new_user.user_name,
+                initiator="admin"
+            )
         return 20000, "OK", event_id
 
     @rpc
