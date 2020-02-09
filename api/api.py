@@ -75,7 +75,8 @@ def get_register_list():
             for event in register_list:
                 user_info = rpc.user_service.get_user_info(event["target"])
                 user_info.update({
-                    "registertime": event['create_time']
+                    "registertime": event['create_time'],
+                    "status": event['status']
                 })
                 data.append(user_info)
             return pack_response(data={"register_list": data})
