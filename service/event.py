@@ -68,13 +68,29 @@ class EventService(object):
             })
         return data
 
+    @staticmethod
+    def operate_event(event_id, status):
+        session = Session()
+        event = session.query(Event).filter(Event.event_id == event_id).first()
+        if not event:
+            session.close()
+            return False
+        if event.event_status != "open":
+            session.close()
+            return False
+        event.event_status = status
+        event.operated_time = datetime.now()
+        session.commit()
+        session.close()
+        return True
+
     @rpc
     def approve(self, event_id):
-        pass
+        return self.operate_event(event_id, "approved")
 
     @rpc
     def reject(self, event_id):
-        pass
+        return self.operate_event(event_id, "rejected")
 
 
 

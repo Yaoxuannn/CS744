@@ -153,6 +153,39 @@ class UserService(object):
         if not logged_user:
             return 10001, "token error/user not logged in"
         logged_user.user_token = None
+        logged_user.login_code = None
         session.commit()
         session.close()
         return 20000, "OK"
+
+    @staticmethod
+    def update_user_status(user_name, status):
+        session = Session()
+        user = session.query(User).filter(User.user_name == user_name).first()
+        if not user:
+            session.close()
+            return False
+        user.user_status = status
+        session.commit()
+        session.close()
+        return True
+
+    @rpc
+    def verify_user(self, user_name):
+        session = Session()
+        with ClusterRpcProxy(CONFIG) as _rpc:
+            user_email = session.query(User.user_email).filter(User.user_name == user_name).first()
+            user_password = session.query(UserSecret.secret).filter(UserSecret.user_name == user_name).first()
+            _rpc.mail_service.send_mail(user_email, "Registration approved", "<i>Congratulations!</i><br/>"
+                                                    "The administrator has approved your registration.<br/>"
+                                                    "Here is your password: <b>%s</b>." % user_password)
+        return self.update_user_status(user_name, "Verified")
+
+    @rpc
+    def reject_user(self, user_name):
+        session = Session()
+        with ClusterRpcProxy(CONFIG) as _rpc:
+            user_email = session.query(User.user_email).filter(User.user_name == user_name).first()
+            _rpc.mail_service.send_mail(user_email, "Registration rejected", "<i>Sorry!</i><br/>"
+                                                    "The administrator has rejected your registration.")
+        return self.update_user_status(user_name, "Rejected")
