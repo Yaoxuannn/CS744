@@ -51,10 +51,6 @@ class UserService(object):
 
     sha1 = sha1()
 
-    @staticmethod
-    def check_login_status():
-        pass
-
     @rpc
     def check_user_type(self, token):
         session = Session()
@@ -145,6 +141,22 @@ class UserService(object):
                                                                               "share your code!<span>" % login_code)
             return 20000, "OK", token, login_code
         return 10001, "Wrong credential", None, None
+
+    @rpc
+    def change_password(self, token, old_password, new_password):
+        session = Session()
+        if self.check_user_type(token):
+            user_name = session.query(User.user_name).filter(User.user_token == token).first()
+            user_secret = session.query(UserSecret)\
+                .filter(UserSecret.secret == old_password)\
+                .filter(UserSecret.user_name == user_name).first()
+            if not user_secret:
+                return 10001, "User not existed or wrong credential."
+            user_secret.secret = new_password
+            session.commit()
+            session.close()
+            return 20000, "OK"
+        return 10002, "User not logged in"
 
     @rpc
     def user_logout(self, token):

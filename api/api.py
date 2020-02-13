@@ -14,6 +14,17 @@ app.config['SECRET_KEY'] = b'_5#y2L"F4Q8z\n\xec]/'
 CONFIG = {'AMQP_URI': "amqp://guest:guest@localhost"}
 
 
+@app.route("/api/v1/checkUserType", methods=['GET'])
+def check_user_type():
+    if check_params(request.args, ['token']):
+        with ClusterRpcProxy(CONFIG) as rpc:
+            user_type = rpc.user_service.check_user_type(request.args['token'])
+            if user_type is None:
+                return pack_response(10001, "User not logged in.")
+            return pack_response(data={"usertype": user_type})
+    return pack_response(10002, "Missing Argument")
+
+
 @app.route("/api/v1/login", methods=['POST'])
 def user_login():
     if not request.json:
@@ -109,6 +120,16 @@ def reject_register():
                     rpc.user_service.reject_user(request.args["username"]):
                 return pack_response()
             return pack_response(10003, "Data Error")
+    return pack_response(10002, "Missing argument")
+
+
+@app.route("/api/v1/changePassword", methods=['POST'])
+def change_password():
+    if check_params(request.json, ["token", "oldPassword", "newPassword"]):
+        payload = request.get_json()
+        with ClusterRpcProxy(CONFIG) as rpc:
+            status, msg = rpc.user_service.change_password(payload.token, payload.oldPassword, payload.newPassword)
+        return pack_response(status, msg)
     return pack_response(10002, "Missing argument")
 
 
