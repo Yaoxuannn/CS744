@@ -16,11 +16,11 @@ CONFIG = {'AMQP_URI': "amqp://guest:guest@localhost"}
 
 @app.route("/api/v1/checkUserType", methods=['GET'])
 def check_user_type():
-    if check_params(request.args, ['token']):
+    if check_params(request.args, ['userID']):
         with ClusterRpcProxy(CONFIG) as rpc:
-            user_type = rpc.user_service.check_user_type(request.args['token'])
+            user_type = rpc.user_service.check_user_type(request.args['userID'])
             if user_type is None:
-                return pack_response(10001, "User not logged in.")
+                return pack_response(10002, "User is not existed.")
             return pack_response(data={"usertype": user_type})
     return pack_response(10002, "Missing Argument")
 
@@ -35,8 +35,6 @@ def user_login():
     password = request.json['password']
     with ClusterRpcProxy(CONFIG) as rpc:
         status, message, token, code = rpc.user_service.user_login(username, password)
-        # if status == 20000:
-        #     session[token] = code
     return pack_response(status, message, data={"token": token})
 
 
@@ -51,7 +49,7 @@ def user_logout():
 
 @app.route("/api/v1/register", methods=['POST'])
 def user_register():
-    if check_params(request.get_json(), ['fullname', "username", "usertype", "email", "mobile", "preferred"]):
+    if check_params(request.get_json(), ['fullname', "username", "usertype", "email", "mobile", "preferred", "associateID"]):
         if not request.json['email'] and not request.json['mobile']:
             return pack_response(10002, "Email and mobile must be provided at least one.")
         if request.json['usertype'] not in ['physician', 'nurse', 'patient']:
@@ -60,6 +58,16 @@ def user_register():
             status, message, event_id = rpc.user_service.user_register(request.json)
         return pack_response(status, message, data={"eventID": event_id})
     return pack_response(10002, "Missing argument")
+
+
+@app.route("/api/v1/getUsers", methods=["GET"])
+def get_users():
+    user_type = "*"
+    if "userType" in request.args:
+        user_type = request.args["userType"]
+    with ClusterRpcProxy(CONFIG) as rpc:
+        users = rpc.user_service.get_user_list(user_type)
+        return pack_response(data={"user_list": users})
 
 
 @app.route("/api/v1/validateCode", methods=['POST'])
@@ -76,10 +84,10 @@ def validate_code():
 
 @app.route("/api/v1/getRegisterList", methods=['GET'])
 def get_register_list():
-    if check_params(request.args, ["token"]):
+    if check_params(request.args, ["userID"]):
         with ClusterRpcProxy(CONFIG) as rpc:
-            user_type = rpc.user_service.check_user_type(request.args["token"])
-            if user_type != "admin":
+            user_type = rpc.user_service.check_user_type(request.args["userID"])
+            if not user_type or user_type != "admin":
                 return pack_response(10001, "Not authorized")
             register_list = rpc.event_service.get_all_events("register")
             data = []
@@ -97,13 +105,13 @@ def get_register_list():
 
 @app.route("/api/v1/register/approve", methods=['GET'])
 def approve_register():
-    if check_params(request.args, ["token", "eventID", "username"]):
+    if check_params(request.args, ["userID", "eventID", "userID"]):
         with ClusterRpcProxy(CONFIG) as rpc:
-            user_type = rpc.user_service.check_user_type(request.args["token"])
+            user_type = rpc.user_service.check_user_type(request.args["userID"])
             if user_type != "admin":
                 return pack_response(10001, "Not authorized")
             if rpc.event_service.approve(request.args['eventID']) and \
-                    rpc.user_service.verify_user(request.args["username"]):
+                    rpc.user_service.verify_user(request.args["userID"]):
                 return pack_response()
             return pack_response(10003, "Data Error.")
     return pack_response(10002, "Missing argument")
@@ -111,13 +119,13 @@ def approve_register():
 
 @app.route("/api/v1/register/reject", methods=["GET"])
 def reject_register():
-    if check_params(request.args, ["token", "eventID", "username"]):
+    if check_params(request.args, ["userID", "eventID", "userID"]):
         with ClusterRpcProxy(CONFIG) as rpc:
-            user_type = rpc.user_service.check_user_type(request.args["token"])
+            user_type = rpc.user_service.check_user_type(request.args["userID"])
             if user_type != "admin":
                 return pack_response(10001, "Not authorized")
             if rpc.event_service.reject(request.args['eventID']) and \
-                    rpc.user_service.reject_user(request.args["username"]):
+                    rpc.user_service.reject_user(request.args["userID"]):
                 return pack_response()
             return pack_response(10003, "Data Error")
     return pack_response(10002, "Missing argument")
