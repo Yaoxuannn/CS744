@@ -20,7 +20,7 @@ class Event(Base):
 
     event_id = Column(String, primary_key=True)
     event_type = Column(String, nullable=False)
-    target = Column(String, nullable=False)
+    target = Column(String)
     initiator = Column(String, default="admin")
     created_time = Column(DateTime)
     operated_time = Column(DateTime)
@@ -39,7 +39,7 @@ class EventService(object):
         return "{}{}".format(now, sha1_obj.hexdigest()[:7])
 
     @rpc
-    def add_event(self, event_type, target, initiator, created_time=datetime.now()):
+    def add_event(self, event_type, initiator, target=None, created_time=datetime.now()):
         event_id = self.generate_event_id()
         session = Session()
         new_event = Event(

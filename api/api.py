@@ -141,6 +141,75 @@ def change_password():
     return pack_response(10002, "Missing argument")
 
 
+@app.route("/api/v1/getGroupID", methods=['GET'])
+def get_group_id():
+    if check_params(request.args, ["userID"]):
+        with ClusterRpcProxy(CONFIG) as rpc:
+            groups = rpc.group_service.get_group_by_user_id(request.args['userID'])
+            return pack_response(data={"gid": groups})
+
+
+@app.route("/api/v1/addPosting", methods=['POST'])
+def add_posting():
+    if check_params(request.json, ['userID', 'type', 'topic', 'message', 'gid']):
+        with ClusterRpcProxy(CONFIG) as rpc:
+            event_id, discussion_id = rpc.posting_service.add_posting(
+                sender=request.json['userID'],
+                type=request.json['type'],
+                topic=request.json['topic'],
+                message=request.json['message'],
+                gid=request.json['gid']
+            )
+        if event_id:
+            return pack_response(data={"eventID": event_id, "discussionID": discussion_id})
+        return pack_response(10003, "Data Error")
+
+
+@app.route("/api/v1/getPosting", methods=['GET'])
+def get_posting():
+    if check_params(request.args, ["type", "userID"]):
+        with ClusterRpcProxy(CONFIG) as rpc:
+            last_id = rpc.user_service.get_last_read_id(request.args['userID'])
+            if last_id:
+                posting_data, new_last_id = rpc.posting_service.get_discussion_by_last_id(last_id)
+            else:
+                posting_data, new_last_id = rpc.posting_service.get_last_discussion()
+            if posting_data:
+                rpc.user_service.set_last_read_id(request.args['userID'], new_last_id)
+                return pack_response(data={"postings": posting_data})
+        return pack_response(10003, "Data Error")
+
+
+@app.route("/api/v1/reply", methods=['POST'])
+def reply_a_discussion():
+    if check_params(request.json, ["sender", "discussionID", "message"]):
+        with ClusterRpcProxy(CONFIG) as rpc:
+            posting_id = rpc.posting_service.reply(request.json['sender'], request.json['discussionID'], request.json['message'])
+        if posting_id:
+            return pack_response(data={"postingID": posting_id})
+        return pack_response(10003, "Data Error")
+
+
+@app.route("/api/v1/getReplies", methods=['GET'])
+def get_relies_from_discussion():
+    if check_params(request.args, ['discussionID']):
+        with ClusterRpcProxy(CONFIG) as rpc:
+            replies = rpc.posting_service.get_replies(request.args['discussionID'])
+        if replies:
+            return pack_response(data={"replies": replies})
+        return pack_response(10003, "Data Error")
+
+
+@app.route("/api/v1/posting/loadMore", methods=['GET'])
+def load_more_posting():
+    pass
+
+
+@app.route("/api/v1/reply/loadMore", methods=['GET'])
+def load_more_reply():
+    pass
+
+
 def check_params(params, essentials):
     for n in essentials:
         if n not in params:

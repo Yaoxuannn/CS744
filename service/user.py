@@ -31,6 +31,7 @@ class User(Base):
     user_status = Column(String, default=0)
     user_token = Column(String, unique=True)
     user_type = Column(String, nullable=False)
+    last_read_posting_id = Column(String)
     login_code = Column(String)
     addition_info = Column(String)
     associate_user = Column(String)
@@ -138,11 +139,7 @@ class UserService(object):
         session.add(UserSecret(user_id=user_info['user_id'], secret=self.generate_password()))
         session.commit()
         with ClusterRpcProxy(CONFIG) as _rpc:
-            event_id = _rpc.event_service.add_event(
-                event_type="register",
-                target=new_user.user_id,
-                initiator="admin"
-            )
+            event_id = _rpc.event_service.add_event(event_type="register", initiator="admin", target=new_user.user_id)
         return 20000, "OK", event_id
 
     @rpc
@@ -199,6 +196,22 @@ class UserService(object):
         session.commit()
         session.close()
         return 20000, "OK"
+
+    @rpc
+    def get_last_read_id(self, user_id):
+        session = Session()
+        posting_id = session.query(User.last_read_posting_id).filter(User.user_id == user_id).first()
+        session.close()
+        return posting_id
+
+    @rpc
+    def set_last_read_id(self, user_id, posting_id):
+        session = Session()
+        current_user = session.query(User).filter(User.user_id == user_id).first()
+        current_user.last_read_posting_id = posting_id
+        session.commit()
+        session.close()
+        return True
 
     @staticmethod
     def update_user_status(user_id, status):
