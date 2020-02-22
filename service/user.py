@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from nameko.rpc import rpc
 from nameko.standalone.rpc import ClusterRpcProxy
-from sqlalchemy import Column, String
+from sqlalchemy import Column, String, Text
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -32,7 +32,7 @@ class User(Base):
     user_token = Column(String, unique=True)
     user_type = Column(String, nullable=False)
     last_read_posting_id = Column(String)
-    login_code = Column(String)
+    login_code = Column(Text)
     addition_info = Column(String)
     associate_user = Column(String)
     preferred_info = Column(String, default="email")
@@ -67,9 +67,9 @@ class UserService(object):
             user_list = session.query(User).filter(User.user_type == user_type).all()
         for user in user_list:
             data.append({
-                "user_id": user.user_id,
-                "user_name": user.user_name,
-                "user_type": user.user_type
+                "userID": user.user_id,
+                "userName": user.user_name,
+                "userType": user.user_type
             })
         return data
 
@@ -108,7 +108,7 @@ class UserService(object):
 
     @staticmethod
     def generate_password():
-        return uuid4().hex[:6]
+        return uuid4().hex[:12]
 
     @staticmethod
     def generate_user_id():
@@ -122,7 +122,7 @@ class UserService(object):
             return 10002, "Username has already been taken", None
         if user_info['usertype'] in ["patient", "nurse"] and not user_info['associateID']:
             return 10002, "Missing Value", None
-        if self.check_user_type(user_info['associateID']) != "physician":
+        if user_info['usertype'] in ["patient", "nurse"] and self.check_user_type(user_info['associateID']) != "physician":
             return 10002, "Wrong Value", None
         new_user = User(
             user_id=self.generate_user_id(),
@@ -136,7 +136,7 @@ class UserService(object):
             preferred_info=user_info['preferred'] or "email"
         )
         session.add(new_user)
-        session.add(UserSecret(user_id=user_info['user_id'], secret=self.generate_password()))
+        session.add(UserSecret(user_id=new_user.user_id, secret=self.generate_password()))
         session.commit()
         with ClusterRpcProxy(CONFIG) as _rpc:
             event_id = _rpc.event_service.add_event(event_type="register", initiator="admin", target=new_user.user_id)
@@ -152,7 +152,7 @@ class UserService(object):
         if session.query(User).filter(User.user_name == username).first().user_status != "Verified":
             return 10002, "User is not verified", None, None
         user_id = session.query(User.user_id).filter(User.user_name == username).first()
-        if session.query(UserSecret).filter(UserSecret.user_id == user_id, UserSecret.secret == password).first():
+        if session.query(UserSecret).filter(UserSecret.user_id == user_id[0], UserSecret.secret == password).first():
             self.sha1.update((username + str(time())).encode())
             token = self.sha1.digest().hex()
             right_user = session.query(User).filter(User.user_name == username).first()
@@ -172,11 +172,11 @@ class UserService(object):
     @rpc
     def change_password(self, token, old_password, new_password):
         session = Session()
-        if self.check_user_type(token):
+        if self.check_user_type(token) is not None:
             user_id = session.query(User.user_id).filter(User.user_token == token).first()
             user_secret = session.query(UserSecret)\
                 .filter(UserSecret.secret == old_password)\
-                .filter(UserSecret.user_id == user_id).first()
+                .filter(UserSecret.user_id == user_id[0]).first()
             if not user_secret:
                 return 10001, "User not existed or wrong credential."
             user_secret.secret = new_password

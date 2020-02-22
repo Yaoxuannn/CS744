@@ -90,10 +90,10 @@ class GroupService(object):
         groups = session.query(UserGroup.group_id).filter(UserGroup.user_id == user_id).all()
         data = []
         for gid in groups:
-            g_name = session.query(Group.group_name).filter(Group.group_id == gid).first()
+            g_name = session.query(Group.group_name).filter(Group.group_id == gid[0]).first()
             data.append({
-                "gid": gid,
-                "groupName": g_name
+                "gid": gid[0],
+                "groupName": g_name[0]
             })
         return data
 

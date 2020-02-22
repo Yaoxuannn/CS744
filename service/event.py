@@ -39,12 +39,19 @@ class EventService(object):
         return "{}{}".format(now, sha1_obj.hexdigest()[:7])
 
     @rpc
-    def add_event(self, event_type, initiator, target=None, created_time=datetime.now()):
+    def add_event(self, event_type, initiator, target=None, created_time=datetime.now(), ts=False):
         event_id = self.generate_event_id()
         session = Session()
         new_event = Event(
-            event_id=event_id, event_type=event_type, target=target, initiator=initiator, created_time=created_time
+            event_id=event_id,
+            event_type=event_type,
+            target=target,
+            initiator=initiator
         )
+        if ts:
+            new_event.created_time = datetime.fromtimestamp(created_time)
+        else:
+            new_event.created_time = created_time
         session.add(new_event)
         session.commit()
         session.close()

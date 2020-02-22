@@ -96,7 +96,7 @@ def get_register_list():
                 user_info = rpc.user_service.get_user_info(event["target"])
                 user_info.update({
                     "eventID": event['event_id'],
-                    "registertime": event['create_time'],
+                    "registerTime": event['create_time'],
                     "status": event['status']
                 })
                 data.append(user_info)
@@ -106,14 +106,14 @@ def get_register_list():
 
 @app.route("/api/v1/register/approve", methods=['GET'])
 def approve_register():
-    if check_params(request.args, ["userID", "eventID", "userID"]):
+    if check_params(request.args, ["userID", "eventID", "newUserID"]):
         with ClusterRpcProxy(CONFIG) as rpc:
             user_type = rpc.user_service.check_user_type(request.args["userID"])
             if user_type != "admin":
                 return pack_response(10001, "Not authorized")
-            rpc.group_service.add_user_into_group(request.args['userID'])
+            rpc.group_service.add_user_into_group(request.args['newUserID'])
             if rpc.event_service.approve(request.args['eventID']) and \
-                    rpc.user_service.verify_user(request.args["userID"]):
+                    rpc.user_service.verify_user(request.args["newUserID"]):
                 return pack_response()
             return pack_response(10003, "Data Error.")
     return pack_response(10002, "Missing argument")
@@ -127,7 +127,7 @@ def reject_register():
             if user_type != "admin":
                 return pack_response(10001, "Not authorized")
             if rpc.event_service.reject(request.args['eventID']) and \
-                    rpc.user_service.reject_user(request.args["userID"]):
+                    rpc.user_service.reject_user(request.args["newUserID"]):
                 return pack_response()
             return pack_response(10003, "Data Error")
     return pack_response(10002, "Missing argument")
@@ -138,7 +138,7 @@ def change_password():
     if check_params(request.json, ["token", "oldPassword", "newPassword"]):
         payload = request.get_json()
         with ClusterRpcProxy(CONFIG) as rpc:
-            status, msg = rpc.user_service.change_password(payload.token, payload.oldPassword, payload.newPassword)
+            status, msg = rpc.user_service.change_password(payload["token"], payload["oldPassword"], payload["newPassword"])
         return pack_response(status, msg)
     return pack_response(10002, "Missing argument")
 
@@ -158,7 +158,7 @@ def add_posting():
         with ClusterRpcProxy(CONFIG) as rpc:
             result = rpc.posting_service.add_posting(
                 sender=request.json['userID'],
-                type=request.json['type'],
+                posting_type=request.json['type'],
                 topic=request.json['topic'],
                 message=request.json['message'],
                 gid=request.json['gid']
@@ -180,10 +180,11 @@ def get_posting():
                 posting_data, new_last_id = rpc.posting_service.get_discussion_by_last_id(last_id)
             else:
                 posting_data, new_last_id = rpc.posting_service.get_last_discussion()
-            if posting_data:
+            if len(posting_data) > 0:
                 rpc.user_service.set_last_read_id(request.args['userID'], new_last_id)
                 return pack_response(data={"postings": posting_data})
-        return pack_response(10003, "Data Error")
+            else:
+                return pack_response(10003, "Data Error")
 
 
 @app.route("/api/v1/reply", methods=['POST'])
