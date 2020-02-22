@@ -111,6 +111,7 @@ def approve_register():
             user_type = rpc.user_service.check_user_type(request.args["userID"])
             if user_type != "admin":
                 return pack_response(10001, "Not authorized")
+            rpc.group_service.add_user_into_group(request.args['userID'])
             if rpc.event_service.approve(request.args['eventID']) and \
                     rpc.user_service.verify_user(request.args["userID"]):
                 return pack_response()
@@ -147,7 +148,7 @@ def get_group_id():
     if check_params(request.args, ["userID"]):
         with ClusterRpcProxy(CONFIG) as rpc:
             groups = rpc.group_service.get_group_by_user_id(request.args['userID'])
-            return pack_response(data={"gid": groups})
+            return pack_response(data={"groups": groups})
 
 
 @app.route("/api/v1/addPosting", methods=['POST'])

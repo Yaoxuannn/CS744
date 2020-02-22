@@ -1,6 +1,7 @@
 # coding=utf-8
 from nameko.rpc import rpc
-from sqlalchemy import Column, String, Integer, or_
+from nameko.standalone.rpc import ClusterRpcProxy
+from sqlalchemy import Column, String, Integer
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -24,7 +25,8 @@ class Group(Base):
 class UserGroup(Base):
     __tablename__ = "user_group"
 
-    user_id = Column(String, primary_key=True)
+    map_id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String)
     group_id = Column(String)
 
 
@@ -65,9 +67,34 @@ class GroupService(object):
     #         })
     #     return data
     @rpc
+    def add_user_into_group(self, user_id):
+        session = Session()
+        with ClusterRpcProxy(CONFIG) as _rpc:
+            user_type = _rpc.user_service.check_user_type(user_id)
+        if user_type in ["nurse", "admin", "physician"]:
+            session.add(UserGroup(
+                user_id=user_id,
+                group_id="NPA"
+            ))
+        if user_type in ["patient", "admin", "physician"]:
+            session.add(UserGroup(
+                user_id=user_id,
+                group_id="PPA"
+            ))
+        session.commit()
+        session.close()
+
+    @rpc
     def get_group_by_user_id(self, user_id):
         session = Session()
         groups = session.query(UserGroup.group_id).filter(UserGroup.user_id == user_id).all()
-        return groups
+        data = []
+        for gid in groups:
+            g_name = session.query(Group.group_name).filter(Group.group_id == gid).first()
+            data.append({
+                "gid": gid,
+                "groupName": g_name
+            })
+        return data
 
 
