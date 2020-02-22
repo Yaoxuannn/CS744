@@ -157,10 +157,10 @@ class PostingService(object):
         data = []
         for r in replies:
             data.append({
-                "posting_id": r.posting_id,
+                "postingID": r.posting_id,
                 "sender": r.sender,
                 "message": r.message,
-                "posting_time": r.posting_time
+                "postingTime": r.posting_time
             })
         return data
 
