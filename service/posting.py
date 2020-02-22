@@ -27,7 +27,7 @@ class Posting(Base):
     message = Column(String, nullable=False)
     group_id = Column(String, nullable=False)
     posting_status = Column(String, default="open")
-    discussion_id = Column(String, nullable=False)
+    discussion_id = Column(String)
 
 
 class Reply(Base):
@@ -54,6 +54,8 @@ class PostingService(object):
     @rpc
     def add_posting(self, sender, posting_type, topic, message, gid):
         session = Session()
+        with ClusterRpcProxy(CONFIG) as _rpc:
+            user_type = _rpc.user_service.check_user_type(sender)
         new_posting = Posting(
             posting_id=self.generate_posting_id(),
             sender=sender,
@@ -61,15 +63,21 @@ class PostingService(object):
             posting_type=posting_type,
             posting_topic=topic,
             message=message,
-            group_id=gid,
-            discussion_id=self.generate_discussion_id()
+            group_id=gid
         )
-        session.add(new_posting)
         with ClusterRpcProxy(CONFIG) as _rpc:
-            event_id = _rpc.event_service.add_event(event_type="posting", initiator=sender, created_time=new_posting.posting_time)
+            if user_type == 'admin' or posting_type == 'dissemination':
+                new_posting.posting_status = 'approved'
+            else:
+                new_posting.discussion_id = self.generate_discussion_id()
+                event_id = _rpc.event_service.add_event(event_type="posting", initiator=sender, created_time=new_posting.posting_time)
+        session.add(new_posting)
         session.commit()
         session.close()
-        return event_id, new_posting.discussion_id
+        if event_id:
+            return event_id, new_posting.discussion_id
+        if user_type == 'admin' or posting_type == 'dissemination':
+            return True
 
     # @rpc
     # def get_posting_by_group(self):

@@ -1,6 +1,7 @@
 # coding=utf-8
 from flask import Flask, request, jsonify
 from nameko.standalone.rpc import ClusterRpcProxy
+from collections import namedtuple
 
 '''
 10001	Permission error
@@ -152,16 +153,20 @@ def get_group_id():
 @app.route("/api/v1/addPosting", methods=['POST'])
 def add_posting():
     if check_params(request.json, ['userID', 'type', 'topic', 'message', 'gid']):
+        Result = namedtuple("Result", ["event_id", "discussion_id"])
         with ClusterRpcProxy(CONFIG) as rpc:
-            event_id, discussion_id = rpc.posting_service.add_posting(
+            result = rpc.posting_service.add_posting(
                 sender=request.json['userID'],
                 type=request.json['type'],
                 topic=request.json['topic'],
                 message=request.json['message'],
                 gid=request.json['gid']
             )
-        if event_id:
-            return pack_response(data={"eventID": event_id, "discussionID": discussion_id})
+        if result is True:
+            return pack_response()
+        if result:
+            result = Result._make(result)
+            return pack_response(data={"eventID": result.event_id, "discussionID": result.discussion_id})
         return pack_response(10003, "Data Error")
 
 
