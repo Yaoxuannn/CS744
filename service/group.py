@@ -24,7 +24,7 @@ class Group(Base):
 class UserGroup(Base):
     __tablename__ = "user_group"
 
-    user_id = Column(String)
+    user_id = Column(String, primary_key=True)
     group_id = Column(String)
 
 
