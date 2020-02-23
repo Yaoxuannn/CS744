@@ -8,7 +8,6 @@ from datetime import datetime
 from time import time
 from hashlib import sha1
 
-
 Base = declarative_base()
 engine = create_engine('sqlite:///../event.db')
 Session = sessionmaker()
@@ -28,7 +27,6 @@ class Event(Base):
 
 
 class EventService(object):
-
     name = "event_service"
 
     @staticmethod
@@ -39,14 +37,15 @@ class EventService(object):
         return "{}{}".format(now, sha1_obj.hexdigest()[:7])
 
     @rpc
-    def add_event(self, event_type, initiator, target=None, created_time=datetime.now(), ts=False):
+    def add_event(self, event_type, initiator, target=None, created_time=datetime.now(), event_status='open', ts=False):
         event_id = self.generate_event_id()
         session = Session()
         new_event = Event(
             event_id=event_id,
             event_type=event_type,
             target=target,
-            initiator=initiator
+            initiator=initiator,
+            event_status=event_status
         )
         if ts:
             new_event.created_time = datetime.fromtimestamp(created_time)
@@ -114,7 +113,3 @@ class EventService(object):
     @rpc
     def reject(self, event_id):
         return self.operate_event(event_id, "rejected")
-
-
-
-

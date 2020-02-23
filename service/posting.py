@@ -75,17 +75,21 @@ class PostingService(object):
             group_id=gid
         )
         with ClusterRpcProxy(CONFIG) as _rpc:
-            if user_type == 'admin' or posting_type == 'dissemination':
+            if posting_type == 'dissemination':
                 new_posting.event_id = event_id = None
             else:
                 new_posting.discussion_id = self.generate_discussion_id()
                 ts = new_posting.posting_time.timestamp()
-                event_id = _rpc.event_service.add_event(event_type="posting", initiator=sender_id,
+                if user_type == 'admin':
+                    event_id = _rpc.event_service.add_event(event_type="posting", initiator=sender_id,
+                                                        created_time=ts, event_status='approved', ts=True)
+                else:
+                    event_id = _rpc.event_service.add_event(event_type="posting", initiator=sender_id,
                                                         created_time=ts, ts=True)
                 new_posting.event_id = event_id
         session.add(new_posting)
         session.commit()
-        if user_type == 'admin' or posting_type == 'dissemination':
+        if posting_type == 'dissemination':
             return True
         if event_id:
             return event_id, new_posting.discussion_id
