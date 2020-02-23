@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from nameko.rpc import rpc
 from nameko.standalone.rpc import ClusterRpcProxy
-from sqlalchemy import Column, String, Text
+from sqlalchemy import Column, Text, Text
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -23,26 +23,26 @@ CONFIG = {'AMQP_URI': "amqp://guest:guest@localhost"}
 class User(Base):
     __tablename__ = "users"
 
-    user_id = Column(String, primary_key=True, unique=True, nullable=False)
-    user_name = Column(String, unique=True)
-    user_fullname = Column(String)
-    user_email = Column(String)
-    user_phone = Column(String)
-    user_status = Column(String, default=0)
-    user_token = Column(String, unique=True)
-    user_type = Column(String, nullable=False)
-    last_read_posting_id = Column(String)
+    user_id = Column(Text, primary_key=True, unique=True, nullable=False)
+    user_name = Column(Text, unique=True)
+    user_fullname = Column(Text)
+    user_email = Column(Text)
+    user_phone = Column(Text)
+    user_status = Column(Text, default=0)
+    user_token = Column(Text, unique=True)
+    user_type = Column(Text, nullable=False)
+    last_read_posting_id = Column(Text)
     login_code = Column(Text)
-    addition_info = Column(String)
-    associate_user = Column(String)
-    preferred_info = Column(String, default="email")
+    addition_info = Column(Text)
+    associate_user = Column(Text)
+    preferred_info = Column(Text, default="email")
 
 
 class UserSecret(Base):
     __tablename__ = "user_secret"
 
-    user_id = Column(String, primary_key=True)
-    secret = Column(String, nullable=False)
+    user_id = Column(Text, primary_key=True)
+    secret = Column(Text, nullable=False)
 
 
 class UserService(object):
@@ -51,9 +51,16 @@ class UserService(object):
     sha1 = sha1()
 
     @rpc
-    def check_user_type(self, user_id):
+    def check_user_type_by_id(self, user_id):
         session = Session()
         check_user = session.query(User).filter(User.user_id == user_id).first()
+        session.close()
+        return check_user.user_type if check_user else None
+
+    @rpc
+    def check_user_type_by_token(self, token):
+        session = Session()
+        check_user = session.query(User).filter(User.user_token == token).first()
         session.close()
         return check_user.user_type if check_user else None
 
@@ -64,7 +71,10 @@ class UserService(object):
         if user_type == "*":
             user_list = session.query(User).all()
         else:
-            user_list = session.query(User).filter(User.user_type == user_type).all()
+            user_list = session.query(User) \
+                .filter(User.user_type == user_type) \
+                .filter(User.user_status == "Verified") \
+                .all()
         for user in user_list:
             data.append({
                 "userID": user.user_id,
@@ -122,7 +132,8 @@ class UserService(object):
             return 10002, "Username has already been taken", None
         if user_info['usertype'] in ["patient", "nurse"] and not user_info['associateID']:
             return 10002, "Missing Value", None
-        if user_info['usertype'] in ["patient", "nurse"] and self.check_user_type(user_info['associateID']) != "physician":
+        if user_info['usertype'] in ["patient", "nurse"] and self.check_user_type_by_id(
+                user_info['associateID']) != "physician":
             return 10002, "Wrong Value", None
         new_user = User(
             user_id=self.generate_user_id(),
@@ -139,7 +150,8 @@ class UserService(object):
         session.add(UserSecret(user_id=new_user.user_id, secret=self.generate_password()))
         session.commit()
         with ClusterRpcProxy(CONFIG) as _rpc:
-            event_id = _rpc.event_service.add_event(event_type="register", initiator="admin", target=new_user.user_id)
+            event_id = _rpc.event_service.add_event(event_type="register", initiator=new_user.user_id,
+                                                    target=new_user.user_id)
         return 20000, "OK", event_id
 
     @rpc
@@ -161,21 +173,20 @@ class UserService(object):
             right_user.login_code = login_code
             email_addr = right_user.user_email
             session.commit()
-            session.close()
             with ClusterRpcProxy(CONFIG) as _rpc:
                 _rpc.mail_service.send_mail(email_addr, "login verification", "Below is your login "
                                                                               "code:<br/><b>%s</b><br/><span>Do not "
                                                                               "share your code!<span>" % login_code)
-            return 20000, "OK", token, login_code
+            return 20000, "OK", token, right_user.user_id
         return 10001, "Wrong credential", None, None
 
     @rpc
     def change_password(self, token, old_password, new_password):
         session = Session()
-        if self.check_user_type(token) is not None:
+        if self.check_user_type_by_token(token) is not None:
             user_id = session.query(User.user_id).filter(User.user_token == token).first()
-            user_secret = session.query(UserSecret)\
-                .filter(UserSecret.secret == old_password)\
+            user_secret = session.query(UserSecret) \
+                .filter(UserSecret.secret == old_password) \
                 .filter(UserSecret.user_id == user_id[0]).first()
             if not user_secret:
                 return 10001, "User not existed or wrong credential."
@@ -232,8 +243,8 @@ class UserService(object):
             user_email = session.query(User.user_email).filter(User.user_id == user_id).first()
             user_password = session.query(UserSecret.secret).filter(UserSecret.user_id == user_id).first()
             _rpc.mail_service.send_mail(user_email, "Registration approved", "<i>Congratulations!</i><br/>"
-                                                    "The administrator has approved your registration.<br/>"
-                                                    "Here is your password: <b>%s</b>." % user_password)
+                                                                             "The administrator has approved your registration.<br/>"
+                                                                             "Here is your password: <b>%s</b>." % user_password)
         return self.update_user_status(user_id, "Verified")
 
     @rpc
@@ -242,5 +253,5 @@ class UserService(object):
         with ClusterRpcProxy(CONFIG) as _rpc:
             user_email = session.query(User.user_email).filter(User.user_id == user_id).first()
             _rpc.mail_service.send_mail(user_email, "Registration rejected", "<i>Sorry!</i><br/>"
-                                                    "The administrator has rejected your registration.")
+                                                                             "The administrator has rejected your registration.")
         return self.update_user_status(user_id, "Rejected")

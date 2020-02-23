@@ -3,7 +3,7 @@ from nameko.rpc import rpc
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, String, DateTime
+from sqlalchemy import Column, Text, DateTime
 from datetime import datetime
 from time import time
 from hashlib import sha1
@@ -18,13 +18,13 @@ Session.configure(bind=engine)
 class Event(Base):
     __tablename__ = "events"
 
-    event_id = Column(String, primary_key=True)
-    event_type = Column(String, nullable=False)
-    target = Column(String)
-    initiator = Column(String, default="admin")
+    event_id = Column(Text, primary_key=True)
+    event_type = Column(Text, nullable=False)
+    target = Column(Text)
+    initiator = Column(Text, default="admin")
     created_time = Column(DateTime)
     operated_time = Column(DateTime)
-    event_status = Column(String, default="open")
+    event_status = Column(Text, default="open")
 
 
 class EventService(object):
@@ -58,19 +58,35 @@ class EventService(object):
         return event_id
 
     @rpc
-    def get_event(self):
-        pass
+    def get_event_info(self, event_id):
+        session = Session()
+        check_event = session.query(Event).filter(Event.event_id == event_id).first()
+        if check_event:
+            return {
+                "event_type": check_event.event_type,
+                "target": check_event.target,
+                "initiator": check_event.initiator,
+                "created_time": check_event.created_time,
+                "operated_time": check_event.operated_time,
+                "event_status": check_event.event_status
+            }
+        return None
 
     @rpc
-    def get_all_events(self, event_type):
+    def get_event_status(self, event_id):
+        event = self.get_event_info(event_id)
+        return event['event_status'] if event else None
+
+    @rpc
+    def get_all_events(self, event_type, status='open'):
         session = Session()
         data = []
-        for event in session.query(Event).filter(Event.event_type == event_type):
+        for event in session.query(Event).filter(Event.event_type == event_type, Event.event_status == status):
             data.append({
                 "event_id": event.event_id,
                 "initiator": event.initiator,
                 "target": event.target,
-                "create_time": event.created_time.strftime("%Y-%m-%d %H:%M:%S"),
+                "created_time": event.created_time.strftime("%Y-%m-%d %H:%M:%S"),
                 "status": event.event_status
             })
         return data
