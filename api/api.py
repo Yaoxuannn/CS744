@@ -187,7 +187,7 @@ def get_posting():
                 rpc.user_service.set_last_read_id(request.args['userID'], new_last_id)
                 return pack_response(data={"postings": posting_data})
             else:
-                return pack_response(10003, "Data Error")
+                return pack_response(10003, "Empty Data")
 
 
 @app.route("/api/v1/reply", methods=['POST'])
@@ -207,7 +207,7 @@ def get_relies_from_discussion():
             replies = rpc.posting_service.get_replies(request.args['discussionID'])
         if replies:
             return pack_response(data={"replies": replies})
-        return pack_response(10003, "Data Error")
+        return pack_response(10003, "Empty Data")
 
 
 @app.route("/api/v1/getPostingList", methods=['GET'])
@@ -220,7 +220,7 @@ def get_posting_list():
             data = rpc.posting_service.get_posting_list()
         if data:
             return pack_response(data={"posting_list": data})
-        return pack_response(10003, "Data Error")
+        return pack_response(10003, "Empty Data")
     return pack_response(10002, "Missing Argument")
 
 

@@ -85,7 +85,7 @@ class EventService(object):
                 "event_id": event.event_id,
                 "initiator": event.initiator,
                 "target": event.target,
-                "created_time": event.created_time.strftime("%Y-%m-%d %H:%M:%S"),
+                "created_time": event.created_time.strftime("%Y-%m-%d %H:%M"),
                 "status": event.event_status
             })
         return data
