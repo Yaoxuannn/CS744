@@ -87,7 +87,7 @@ def validate_code():
 def get_register_list():
     if check_params(request.args, ["token"]):
         with ClusterRpcProxy(CONFIG) as rpc:
-            user_type = rpc.user_service.check_user_type_by_token(request.args["userID"])
+            user_type = rpc.user_service.check_user_type_by_token(request.args["token"])
             if not user_type or user_type != "admin":
                 return pack_response(10001, "Not authorized")
             register_list = rpc.event_service.get_all_events("register")
