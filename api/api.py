@@ -189,11 +189,12 @@ def get_posting():
                     posting_data, new_last_id = rpc.posting_service.get_discussion_by_last_id(last_id)
                 else:
                     posting_data, new_last_id = rpc.posting_service.get_last_discussion()
-            if len(posting_data) > 0:
-                rpc.user_service.set_last_read_id(request.args['userID'], new_last_id)
-                return pack_response(data={"postings": posting_data})
-            else:
-                return pack_response(10003, "Empty Data")
+                if len(posting_data) > 0:
+                    rpc.user_service.set_last_read_id(request.args['userID'], new_last_id)
+                else:
+                    return pack_response(10003, "Empty Data")
+            return pack_response(data={"postings": posting_data})
+    return pack_response(10002, "Missing argument")
 
 
 @app.route("/api/v1/reply", methods=['POST'])
