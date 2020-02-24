@@ -179,8 +179,10 @@ def get_posting():
     if check_params(request.args, ["type", "userID"]):
         with ClusterRpcProxy(CONFIG) as rpc:
             if request.args['type'] == "dissemination":
-                gid = rpc.group_service.get_group_by_user_id(request.args['userID'])['gid']
-                posting_data = rpc.posting_service_get_dissemination(gid)
+                posting_data = []
+                groups = rpc.group_service.get_group_by_user_id(request.args['userID'])
+                for g in groups:
+                    posting_data.append(rpc.posting_service_get_dissemination(g['gid']))
             else:
                 last_id = rpc.user_service.get_last_read_id(request.args['userID'])
                 if last_id:
