@@ -82,10 +82,10 @@ class PostingService(object):
                 ts = new_posting.posting_time.timestamp()
                 if user_type == 'admin':
                     event_id = _rpc.event_service.add_event(event_type="posting", initiator=sender_id,
-                                                        created_time=ts, event_status='approved', ts=True)
+                                                            created_time=ts, event_status='approved', ts=True)
                 else:
                     event_id = _rpc.event_service.add_event(event_type="posting", initiator=sender_id,
-                                                        created_time=ts, ts=True)
+                                                            created_time=ts, ts=True)
                 new_posting.event_id = event_id
         session.add(new_posting)
         session.commit()
@@ -100,7 +100,25 @@ class PostingService(object):
 
     @rpc
     def get_dissemination(self, group_id):
-        pass
+        session = Session()
+        postings = session.query(Posting) \
+            .filter(Posting.posting_type == 'dissemination') \
+            .filter(Posting.group_id == group_id) \
+            .order_by(Posting.posting_time.desc()) \
+            .all()
+        session.close()
+        data = []
+        with ClusterRpcProxy(CONFIG) as _rpc:
+            for posting in postings:
+                user_info = _rpc.user_service.get_user_info(posting.sender)
+                data.append({
+                    "topic": posting.posting_topic,
+                    "senderID": posting.sender,
+                    "senderName": user_info['user_name'],
+                    "posting_time": posting.posting_time,
+                    "message": posting.message
+                })
+        return data
 
     @rpc
     def get_discussion_by_last_id(self, last_id, limit=1):
@@ -132,7 +150,7 @@ class PostingService(object):
             data.append({
                 "topic": posting.posting_topic,
                 "senderID": posting.sender,
-                "senderName": user_info['user_name'],  # 或者是fullname
+                "senderName": user_info['user_name'],
                 "posting_time": posting.posting_time,
                 "approved_time": posting.approve_time,
                 "message": posting.message,
