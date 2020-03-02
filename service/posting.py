@@ -121,10 +121,12 @@ class PostingService(object):
         return data
 
     @rpc
-    def get_discussion_by_last_id(self, last_id, limit=1):
+    def get_discussion_by_last_id(self, last_id, group_id, limit=7):
         session = Session()
+        # 我这个地方为什么不用limit 我可能是个傻逼
         postings = session.query(Posting) \
             .filter(Posting.posting_type == 'discussion') \
+            .filter(Posting.group_id == group_id) \
             .order_by(Posting.posting_time.desc()) \
             .all()
         session.close()
@@ -159,10 +161,11 @@ class PostingService(object):
         return data, new_last_id
 
     @rpc
-    def get_last_discussion(self):
+    def get_last_discussion(self, group_id):
         session = Session()
         postings = session.query(Posting) \
             .filter(Posting.posting_type == 'discussion') \
+            .filter(Posting.group_id == group_id) \
             .order_by(Posting.posting_time.desc()) \
             .all()
         session.close()
@@ -201,7 +204,7 @@ class PostingService(object):
         return new_reply.posting_id
 
     @rpc
-    def get_replies(self, discussion_id, limit=5):
+    def get_replies(self, discussion_id, limit=15):
         session = Session()
         replies = session.query(Reply) \
             .filter(Reply.discussion_id == discussion_id) \
@@ -221,7 +224,7 @@ class PostingService(object):
         return data
 
     @rpc
-    def search_posting(self, topic, start_date, end_date, user, limit=1):
+    def search_posting(self, topic, start_date, end_date, user):
         pass
 
     @rpc

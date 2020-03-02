@@ -178,17 +178,21 @@ def add_posting():
 def get_posting():
     if check_params(request.args, ["type", "userID"]):
         with ClusterRpcProxy(CONFIG) as rpc:
+            posting_data = []
+            groups = rpc.group_service.get_group_by_user_id(request.args['userID'])
             if request.args['type'] == "dissemination":
-                posting_data = []
-                groups = rpc.group_service.get_group_by_user_id(request.args['userID'])
                 for g in groups:
                     posting_data.append(rpc.posting_service.get_dissemination(g['gid']))
             else:
                 last_id = rpc.user_service.get_last_read_id(request.args['userID'])
                 if last_id:
-                    posting_data, new_last_id = rpc.posting_service.get_discussion_by_last_id(last_id)
+                    for g in groups:
+                        p_data, new_last_id = rpc.posting_service.get_discussion_by_last_id(last_id, g['gid'])
+                        posting_data.extend(p_data)
                 else:
-                    posting_data, new_last_id = rpc.posting_service.get_last_discussion()
+                    for g in groups:
+                        p_data, new_last_id = rpc.posting_service.get_last_discussion(g['gid'])
+                        posting_data.extend(p_data)
                 if len(posting_data) > 0:
                     rpc.user_service.set_last_read_id(request.args['userID'], new_last_id)
                 else:
