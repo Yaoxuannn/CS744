@@ -84,6 +84,19 @@ class UserService(object):
         return data
 
     @rpc
+    def search_user(self, username):
+        session = Session()
+        data = []
+        users = session.query(User).filter(User.user_fullname.like("%" + username + "%")).all()
+        for user in users:
+            data.append({
+                "userID": user.user_id,
+                "userName": user.user_fullname
+            })
+        session.close()
+        return data
+
+    @rpc
     def get_user_info(self, user_id):
         session = Session()
         check_user = session.query(User).filter(User.user_id == user_id).first()

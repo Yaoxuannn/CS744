@@ -50,7 +50,8 @@ def user_logout():
 
 @app.route("/api/v1/register", methods=['POST'])
 def user_register():
-    if check_params(request.get_json(), ['fullname', "username", "usertype", "email", "mobile", "preferred", "associateID"]):
+    if check_params(request.get_json(),
+                    ['fullname', "username", "usertype", "email", "mobile", "preferred", "associateID"]):
         if not request.json['email'] and not request.json['mobile']:
             return pack_response(10002, "Email and mobile must be provided at least one.")
         if request.json['usertype'] not in ['physician', 'nurse', 'patient']:
@@ -141,7 +142,8 @@ def change_password():
     if check_params(request.json, ["token", "oldPassword", "newPassword"]):
         payload = request.get_json()
         with ClusterRpcProxy(CONFIG) as rpc:
-            status, msg = rpc.user_service.change_password(payload["token"], payload["oldPassword"], payload["newPassword"])
+            status, msg = rpc.user_service.change_password(payload["token"], payload["oldPassword"],
+                                                           payload["newPassword"])
         return pack_response(status, msg)
     return pack_response(10002, "Missing argument")
 
@@ -157,7 +159,7 @@ def get_group_id():
 @app.route("/api/v1/addPosting", methods=['POST'])
 def add_posting():
     if check_params(request.json, ['senderID', 'type', 'topic', 'message', 'gid']):
-        Result = namedtuple("Result", ["event_id", "discussion_id"])
+        Result = namedtuple("Result", ["event_id", "discussion_id", "posting_time"])
         with ClusterRpcProxy(CONFIG) as rpc:
             result = rpc.posting_service.add_posting(
                 sender_id=request.json['senderID'],
@@ -170,7 +172,8 @@ def add_posting():
             return pack_response()
         if result:
             result = Result._make(result)
-            return pack_response(data={"eventID": result.event_id, "discussionID": result.discussion_id})
+            return pack_response(data={"eventID": result.event_id, "discussionID": result.discussion_id,
+                                       "posting_time": result.posting_time})
         return pack_response(10003, "Data Error")
 
 
@@ -184,18 +187,10 @@ def get_posting():
                 for g in groups:
                     posting_data.append(rpc.posting_service.get_dissemination(g['gid']))
             else:
-                last_id = rpc.user_service.get_last_read_id(request.args['userID'])
-                if last_id:
-                    for g in groups:
-                        p_data, new_last_id = rpc.posting_service.get_discussion_by_last_id(last_id, g['gid'])
-                        posting_data.extend(p_data)
-                else:
-                    for g in groups:
-                        p_data, new_last_id = rpc.posting_service.get_last_discussion(g['gid'])
-                        posting_data.extend(p_data)
-                if len(posting_data) > 0:
-                    rpc.user_service.set_last_read_id(request.args['userID'], new_last_id)
-                else:
+                for g in groups:
+                    p_data = rpc.posting_service.get_discussions(g['gid'])
+                    posting_data.extend(p_data)
+                if len(posting_data) == 0:
                     return pack_response(10003, "Empty Data")
             return pack_response(data={"postings": posting_data})
     return pack_response(10002, "Missing argument")
@@ -205,7 +200,8 @@ def get_posting():
 def reply_a_discussion():
     if check_params(request.json, ["senderID", "discussionID", "message"]):
         with ClusterRpcProxy(CONFIG) as rpc:
-            posting_id = rpc.posting_service.reply(request.json['senderID'], request.json['discussionID'], request.json['message'])
+            posting_id = rpc.posting_service.reply(request.json['senderID'], request.json['discussionID'],
+                                                   request.json['message'])
         if posting_id:
             return pack_response(data={"postingID": posting_id})
         return pack_response(10003, "Data Error")
@@ -269,6 +265,43 @@ def load_more_posting():
 @app.route("/api/v1/reply/loadMore", methods=['GET'])
 def load_more_reply():
     pass
+
+
+@app.route("/api/v1/searchUser", methods=['GET'])
+def search_user():
+    if check_params(request.args, ['username']):
+        with ClusterRpcProxy(CONFIG) as rpc:
+            like_users = rpc.user_service.search_user(request.args["username"])
+            return pack_response(data={"users": like_users})
+    return pack_response(10002, "Missing Argument")
+
+
+@app.route("/api/v1/searchPosting", methods=['POST'])
+def search_posting():
+    if check_params(request.json, ['userID', 'topic', 'from', 'to', 'sender']):
+        data = []
+        with ClusterRpcProxy(CONFIG) as rpc:
+            user_groups = rpc.group_service.get_group_by_user_id(request.json['userID'])
+            if request.json['sender']:
+                sender_groups = rpc.group_service.get_group_by_user_id(request.json['sender'])
+                if len(set([x["gid"] for x in user_groups]) & set([y["gid"] for y in sender_groups])) == 0:
+                    return pack_response(10002, "Not in the same group")
+            for gid in [x['gid'] for x in user_groups]:
+                postings = rpc.posting_service.search_posting(
+                    gid,
+                    request.json['topic'],
+                    int(request.json['from']) / 1000,
+                    int(request.json['to']) / 1000,
+                    request.json['sender']
+                )
+                for posting in postings:
+                    replies = rpc.posting_service.get_replies(posting['postingID'])
+                    posting.update({"replies": replies})
+                    data.append(posting)
+            if len(data) == 0:
+                return pack_response(msg="No result")
+            return pack_response(data={"result": data})
+    return pack_response(10002, "Missing Argument")
 
 
 def check_params(params, essentials):

@@ -31,6 +31,7 @@ class Posting(Base):
     message = Column(Text, nullable=False)
     group_id = Column(Text, nullable=False)
     discussion_id = Column(Text)
+    posting_status = Column(Text)
 
 
 class Reply(Base):
@@ -83,16 +84,18 @@ class PostingService(object):
                 if user_type == 'admin':
                     event_id = _rpc.event_service.add_event(event_type="posting", initiator=sender_id,
                                                             created_time=ts, event_status='approved', ts=True)
+                    new_posting.posting_status = "approved"
                 else:
                     event_id = _rpc.event_service.add_event(event_type="posting", initiator=sender_id,
                                                             created_time=ts, ts=True)
+                    new_posting.posting_status = "open"
                 new_posting.event_id = event_id
         session.add(new_posting)
         session.commit()
         if posting_type == 'dissemination':
             return True
         if event_id:
-            return event_id, new_posting.discussion_id
+            return event_id, new_posting.discussion_id.new_posting.posting_time
 
     # @rpc
     # def get_posting_by_group(self):
@@ -120,71 +123,75 @@ class PostingService(object):
                 })
         return data
 
-    @rpc
-    def get_discussion_by_last_id(self, last_id, group_id, limit=7):
-        session = Session()
-        # 我这个地方为什么不用limit 我可能是个傻逼
-        postings = session.query(Posting) \
-            .filter(Posting.posting_type == 'discussion') \
-            .filter(Posting.group_id == group_id) \
-            .order_by(Posting.posting_time.desc()) \
-            .all()
-        session.close()
-        index = 0
-        data = []
-        if len(postings) < 1:
-            return [], None
-        approved_postings = []
-        for posting in postings:
-            with ClusterRpcProxy(CONFIG) as _rpc:
-                posting_status = _rpc.event_service.get_event_status(posting.event_id)
-                if posting_status == 'approved':
-                    approved_postings.append(posting)
-        del postings
-        for posting in approved_postings:
-            if posting.posting_id == last_id:
-                index = approved_postings[posting]
-                break
-        new_last_id = approved_postings[0].posting_id
-        for posting in approved_postings[:index + limit + 1]:
-            with ClusterRpcProxy(CONFIG) as _rpc:
-                user_info = _rpc.user_service.get_user_info(posting.sender)
-            data.append({
-                "topic": posting.posting_topic,
-                "senderID": posting.sender,
-                "senderName": user_info['user_name'],
-                "posting_time": posting.posting_time,
-                "approved_time": posting.approve_time,
-                "message": posting.message,
-                "discussion_id": posting.discussion_id,
-            })
-        return data, new_last_id
+    # @rpc
+    # def get_discussion_by_last_id(self, last_id, group_id, limit=8):
+    #     session = Session()
+    #     postings = session.query(Posting) \
+    #         .filter(Posting.posting_type == 'discussion') \
+    #         .filter(Posting.group_id == group_id) \
+    #         .order_by(Posting.posting_time.desc()) \
+    #         .all()
+    #     session.close()
+    #     index = 0
+    #     data = []
+    #     if len(postings) < 1:
+    #         return [], None
+    #     approved_postings = []
+    #     for posting in postings:
+    #         with ClusterRpcProxy(CONFIG) as _rpc:
+    #             posting_status = _rpc.event_service.get_event_status(posting.event_id)
+    #             if posting_status == 'approved':
+    #                 approved_postings.append(posting)
+    #     del postings
+    #     for posting in approved_postings:
+    #         if posting.posting_id == last_id:
+    #             index = approved_postings[posting]
+    #             break
+    #     new_last_id = approved_postings[0].posting_id
+    #     for posting in approved_postings[:index + limit + 1]:
+    #         with ClusterRpcProxy(CONFIG) as _rpc:
+    #             user_info = _rpc.user_service.get_user_info(posting.sender)
+    #         data.append({
+    #             "topic": posting.posting_topic,
+    #             "senderID": posting.sender,
+    #             "senderName": user_info['user_name'],
+    #             "posting_time": posting.posting_time,
+    #             "approved_time": posting.approve_time,
+    #             "message": posting.message,
+    #             "discussion_id": posting.discussion_id,
+    #         })
+    #     return data, new_last_id
 
-    @rpc
-    def get_last_discussion(self, group_id):
-        session = Session()
-        postings = session.query(Posting) \
-            .filter(Posting.posting_type == 'discussion') \
-            .filter(Posting.group_id == group_id) \
-            .order_by(Posting.posting_time.desc()) \
-            .all()
-        session.close()
+    @staticmethod
+    def make_discussion_info(postings):
+        data = []
         with ClusterRpcProxy(CONFIG) as _rpc:
             for posting in postings:
-                posting_status = _rpc.event_service.get_event_status(posting.event_id)
-                if posting_status == 'approved':
-                    last_one = posting
-                    break
-            user_info = _rpc.user_service.get_user_info(last_one.sender)
-        return [{
-            "topic": last_one.posting_topic,
-            "senderID": last_one.sender,
-            "senderName": user_info["user_name"],
-            "posting_time": last_one.posting_time,
-            "approved_time": last_one.approve_time,
-            "message": last_one.message,
-            "discussion_id": last_one.discussion_id,
-        }], last_one.posting_id
+                user_info = _rpc.user_service.get_user_info(posting.sender)
+                data.append({
+                    "postingID": posting.posting_id,
+                    "topic": posting.posting_topic,
+                    "senderID": posting.sender,
+                    "senderName": user_info["user_name"],
+                    "posting_time": posting.posting_time,
+                    "approved_time": posting.approve_time,
+                    "message": posting.message,
+                    "discussion_id": posting.discussion_id,
+                })
+        return data
+
+    @rpc
+    def get_discussions(self, group_id):
+        session = Session()
+        postings = session.query(Posting) \
+            .filter(Posting.posting_type == 'discussion') \
+            .filter(Posting.group_id == group_id) \
+            .filter(Posting.posting_status == "approved") \
+            .order_by(Posting.posting_time.desc()) \
+            .all()
+        session.close()
+        data = self.make_discussion_info(postings)
+        return data
 
     @rpc
     def reply(self, sender_id, discussion_id, message):
@@ -204,7 +211,7 @@ class PostingService(object):
         return new_reply.posting_id
 
     @rpc
-    def get_replies(self, discussion_id, limit=15):
+    def get_replies(self, discussion_id, limit=8):
         session = Session()
         replies = session.query(Reply) \
             .filter(Reply.discussion_id == discussion_id) \
@@ -224,8 +231,24 @@ class PostingService(object):
         return data
 
     @rpc
-    def search_posting(self, topic, start_date, end_date, user):
-        pass
+    def search_posting(self, gid, topic, start_date, end_date, sender):
+        session = Session()
+        posting_query = session.query(Posting)\
+            .filter(Posting.posting_status == "approved")\
+            .filter(Posting.group_id == gid)
+        if start_date:
+            start_date = datetime.fromtimestamp(start_date)
+            posting_query = posting_query.filter(Posting.posting_time >= start_date)
+        if end_date:
+            end_date = datetime.fromtimestamp(end_date)
+            posting_query = posting_query.filter(Posting.posting_time <= end_date)
+        if topic:
+            posting_query = posting_query.filter(Posting.posting_topic.like("%" + topic + "%"))
+        if sender:
+            posting_query = posting_query.filter(Posting.sender == sender)
+        result = posting_query.all()
+        session.close()
+        return self.make_discussion_info(result)
 
     @rpc
     def approve_posting(self, posting_id):
@@ -235,6 +258,7 @@ class PostingService(object):
             event_id = target_posting.event_id
             with ClusterRpcProxy(CONFIG) as _rpc:
                 if _rpc.event_service.approve(event_id):
+                    target_posting.posting_status = "approved"
                     return True
         return False
 
@@ -246,6 +270,7 @@ class PostingService(object):
             event_id = target_posting.event_id
             with ClusterRpcProxy(CONFIG) as _rpc:
                 if _rpc.event_service.reject(event_id):
+                    target_posting.posting_status = "rejected"
                     return True
         return False
 
@@ -264,7 +289,7 @@ class PostingService(object):
                     "senderID": p_event['initiator'],
                     "senderName": sender_info['user_name'],
                     "senderEmail": sender_info['email'],
-                    "sendtime": p_event['created_time'],
+                    "posting_time": p_event['created_time'],
                     "topic": posting_info.posting_topic,
                     "message": posting_info.message
                 })
