@@ -119,7 +119,7 @@ class PostingService(object):
                     "topic": posting.posting_topic,
                     "senderID": posting.sender,
                     "senderName": user_info['user_name'],
-                    "posting_time": posting.posting_time,
+                    "posting_time": posting.posting_time.strftime("%m/%d/%Y %H:%M"),
                     "message": posting.message
                 })
         return data
@@ -174,7 +174,7 @@ class PostingService(object):
                     "topic": posting.posting_topic,
                     "senderID": posting.sender,
                     "senderName": user_info["user_name"],
-                    "posting_time": posting.posting_time,
+                    "posting_time": posting.posting_time.strftime("%m/%d/%Y %H:%M"),
                     "message": posting.message,
                     "discussion_id": posting.discussion_id,
                 })
@@ -228,7 +228,7 @@ class PostingService(object):
                     "senderID": r.sender,
                     "senderName": user_info['user_name'],
                     "message": r.message,
-                    "posting_time": r.posting_time
+                    "posting_time": r.posting_time.strftime("%m/%d/%Y %H:%M")
                 })
         return data
 
@@ -377,7 +377,7 @@ class PostingService(object):
                     "senderID": p_event['initiator'],
                     "senderName": sender_info['user_name'],
                     "senderEmail": sender_info['email'],
-                    "posting_time": p_event['created_time'],
+                    "posting_time": p_event['created_time'].strftime("%m/%d/%Y %H:%M"),
                     "topic": posting_info.posting_topic,
                     "message": posting_info.message
                 })
@@ -402,7 +402,7 @@ class PostingService(object):
                         "informerName": informer_info['full_name'],
                         "senderID": posting_info['sender'],
                         "senderName": sender_info['full_name'],
-                        "posting_time": posting_info['posting_time'],
+                        "posting_time": posting_info['posting_time'].strftime("%m/%d/%Y %H:%M"),
                         "topic": posting_info['topic'],
                         "message": posting_info['message']
                     })
