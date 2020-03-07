@@ -23,9 +23,9 @@ class Posting(Base):
 
     posting_id = Column(Text, primary_key=True)
     event_id = Column(Text)
+    cite_event = Column(Text)
     sender = Column(Text, nullable=False)
     posting_time = Column(DateTime)
-    approve_time = Column(DateTime)
     posting_type = Column(Text, default="discussion")
     posting_topic = Column(Text)
     message = Column(Text, nullable=False)
@@ -39,6 +39,7 @@ class Reply(Base):
 
     posting_id = Column(Text, primary_key=True)
     discussion_id = Column(Text, nullable=False)
+    cite_event = Column(Text)
     sender = Column(Text, nullable=False)
     posting_time = Column(DateTime)
     message = Column(Text, nullable=False)
@@ -95,7 +96,7 @@ class PostingService(object):
         if posting_type == 'dissemination':
             return True
         if event_id:
-            return event_id, new_posting.discussion_id.new_posting.posting_time
+            return event_id, new_posting.discussion_id, new_posting.posting_time
 
     # @rpc
     # def get_posting_by_group(self):
@@ -174,7 +175,6 @@ class PostingService(object):
                     "senderID": posting.sender,
                     "senderName": user_info["user_name"],
                     "posting_time": posting.posting_time,
-                    "approved_time": posting.approve_time,
                     "message": posting.message,
                     "discussion_id": posting.discussion_id,
                 })
@@ -182,6 +182,7 @@ class PostingService(object):
 
     @rpc
     def get_discussions(self, group_id):
+        # TODO: 后续改成带有limit的版本
         session = Session()
         postings = session.query(Posting) \
             .filter(Posting.posting_type == 'discussion') \
@@ -211,12 +212,13 @@ class PostingService(object):
         return new_reply.posting_id
 
     @rpc
-    def get_replies(self, discussion_id, limit=8):
+    def get_replies(self, discussion_id, limit=8, offset=0):
         session = Session()
         replies = session.query(Reply) \
             .filter(Reply.discussion_id == discussion_id) \
             .order_by(Reply.posting_time.asc()) \
-            .limit(limit=limit)
+            .limit(limit) \
+            .offset(offset)
         data = []
         with ClusterRpcProxy(CONFIG) as _rpc:
             for r in replies:
@@ -231,10 +233,58 @@ class PostingService(object):
         return data
 
     @rpc
+    def set_cite_event(self, posting_id, event_id):
+        session = Session()
+        cited_posting = session.query(Posting).filter(Posting.posting_id == posting_id).first()
+        if not cited_posting:
+            cited_posting = session.query(Reply).filter(Reply.posting_id == posting_id).first()
+        if cited_posting:
+            cited_posting.cite_event = event_id
+            session.commit()
+            return True
+        return False
+
+    @rpc
+    def get_cite_event(self, posting_id):
+        session = Session()
+        cited_posting = session.query(Posting).filter(Posting.posting_id == posting_id).first()
+        if not cited_posting:
+            cited_posting = session.query(Reply).filter(Reply.posting_id == posting_id).first()
+        with ClusterRpcProxy(CONFIG) as _rpc:
+            if cited_posting:
+                return _rpc.event_service.get_event_info(cited_posting.cite_event)
+            return None
+
+    @rpc
+    def get_posting_by_cite_event(self, event_id):
+        session = Session()
+        topic = None
+        posting_type = ''
+        cited_posting = session.query(Posting).filter(Posting.cite_event == event_id).first()
+        if cited_posting:
+            posting_type = cited_posting.posting_type
+        else:
+            cited_posting = session.query(Reply).filter(Reply.cite_event == event_id).first()
+            if cited_posting:
+                posting_type = "discussion"
+                topic = session.query(Posting.posting_topic).filter(
+                    Posting.discussion_id == cited_posting.discussion_id).first()[0]
+        if cited_posting:
+            return {
+                "posting_id": cited_posting.posting_id,
+                "posting_type": posting_type,
+                "sender": cited_posting.sender,
+                "posting_time": cited_posting.posting_time,
+                "topic": topic if topic else cited_posting.posting_topic,
+                "message": cited_posting.message,
+            }
+        return None
+
+    @rpc
     def search_posting(self, gid, topic, start_date, end_date, sender):
         session = Session()
-        posting_query = session.query(Posting)\
-            .filter(Posting.posting_status == "approved")\
+        posting_query = session.query(Posting) \
+            .filter(Posting.posting_status == "approved") \
             .filter(Posting.group_id == gid)
         if start_date:
             start_date = datetime.fromtimestamp(start_date)
@@ -259,6 +309,7 @@ class PostingService(object):
             with ClusterRpcProxy(CONFIG) as _rpc:
                 if _rpc.event_service.approve(event_id):
                     target_posting.posting_status = "approved"
+                    session.commit()
                     return True
         return False
 
@@ -272,6 +323,43 @@ class PostingService(object):
                 if _rpc.event_service.reject(event_id):
                     target_posting.posting_status = "rejected"
                     return True
+        return False
+
+    @rpc
+    def remove_a_posting(self, posting_id):
+        # TODO: 感觉直接删掉并不好, 迁移到一个新表或者直接标记
+        session = Session()
+        deleted_posting = session.query(Reply).filter(Reply.posting_id == posting_id).first()
+        if deleted_posting:
+            session.delete(deleted_posting)
+        else:
+            deleted_posting = session.query(Posting).filter(Posting.posting_id == posting_id).first()
+            if not deleted_posting:
+                session.close()
+                return None
+            if deleted_posting.posting_type == 'dissemination':
+                session.delete(deleted_posting)
+            else:
+                deleted_replies = session.query(Reply).filter(Reply.discussion_id == deleted_posting.discussion_id).all()
+                session.delete(deleted_posting)
+                for reply in deleted_replies:
+                    session.delete(reply)
+        session.commit()
+        return {
+            "posting_id": deleted_posting.posting_id,
+            "sender": deleted_posting.sender,
+            "message": deleted_posting.message
+        }
+
+    @rpc
+    def ignore_a_cite(self, event_id):
+        session = Session()
+        cited_posting = session.query(Posting).filter(Posting.cite_event == event_id).first()
+        if cited_posting:
+            cited_posting.cite_event = None
+            session.commit()
+            return True
+        session.close()
         return False
 
     @rpc
@@ -295,3 +383,27 @@ class PostingService(object):
                 })
             session.close()
             return posting_list
+
+    @rpc
+    def get_cite_list(self):
+        with ClusterRpcProxy(CONFIG) as _rpc:
+            cite_events = _rpc.event_service.get_all_events("cite")
+            data = []
+            for c_event in cite_events:
+                posting_info = self.get_posting_by_cite_event(c_event['event_id'])
+                if posting_info:
+                    informer_info = _rpc.user_service.get_user_info(c_event["initiator"])
+                    sender_info = _rpc.user_service.get_user_info(posting_info['sender'])
+                    data.append({
+                        "eventID": c_event['event_id'],
+                        "postingID": posting_info['posting_id'],
+                        "postingType": posting_info['posting_type'],
+                        "informerID": informer_info["user_id"],
+                        "informerName": informer_info['full_name'],
+                        "senderID": posting_info['sender'],
+                        "senderName": sender_info['full_name'],
+                        "posting_time": posting_info['posting_time'],
+                        "topic": posting_info['topic'],
+                        "message": posting_info['message']
+                    })
+            return data

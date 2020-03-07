@@ -11,4 +11,3 @@ class MailService(object):
     @rpc
     def send_mail(self, to, subject, content):
         yag.send(to, subject, content)
-
