@@ -281,13 +281,16 @@ def search_posting():
                 sender_groups = rpc.group_service.get_group_by_user_id(request.json['sender'])
                 if len(set([x["gid"] for x in user_groups]) & set([y["gid"] for y in sender_groups])) == 0:
                     return pack_response(10002, "Not in the same group")
+            start_date = transfer_timestamp(request.json['from'])
+            end_date = transfer_timestamp(request.json['to'])
+            if start_date is None or end_date is None:
+                return pack_response(10002, "Argument Format Error")
             for gid in [x['gid'] for x in user_groups]:
-                # TODO: 时间转换需要验证, 不能直接这样转换做除法
                 postings = rpc.posting_service.search_posting(
                     gid,
                     request.json['topic'],
-                    int(request.json['from']) / 1000,
-                    int(request.json['to']) / 1000,
+                    start_date,
+                    end_date,
                     request.json['sender']
                 )
                 for posting in postings:
@@ -304,7 +307,7 @@ def search_posting():
 def cite_posting():
     if check_params(request.args, ['userID', 'postingID', 'reason']):
         with ClusterRpcProxy(CONFIG) as rpc:
-            # TODO: 检测posting不存在的情况
+            # TODO: 检测posting不存在的情况, 看起来还需要过滤一下用户ID
             if rpc.posting_service.get_cite_event(request.args['postingID']):
                 return pack_response(10002, "This posting has been cited.")
             event_id = rpc.event_service.add_event("cite", request.args['userID'], request.args['postingID'],
@@ -382,6 +385,19 @@ def pack_response(status_code=20000, msg="ok", **kwargs):
     res.headers['Access-Control-Allow-Origin'] = "*"
     res.headers['X-XSS-Protection'] = "1"
     return res
+
+
+def transfer_timestamp(javascript_ts):
+    if javascript_ts is None:
+        return None
+    try:
+        length = len(javascript_ts)
+        ts = int(javascript_ts)
+    except ValueError:
+        return None
+    if length != 13:
+        return None
+    return ts / 1000
 
 
 def clean_params(params):
