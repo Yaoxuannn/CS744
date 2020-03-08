@@ -377,7 +377,7 @@ class PostingService(object):
                     "senderID": p_event['initiator'],
                     "senderName": sender_info['user_name'],
                     "senderEmail": sender_info['email'],
-                    "posting_time": p_event['created_time'].strftime("%m/%d/%Y %H:%M"),
+                    "posting_time": p_event['created_time'],
                     "topic": posting_info.posting_topic,
                     "message": posting_info.message
                 })
@@ -404,6 +404,7 @@ class PostingService(object):
                         "senderName": sender_info['full_name'],
                         "posting_time": posting_info['posting_time'].strftime("%m/%d/%Y %H:%M"),
                         "topic": posting_info['topic'],
-                        "message": posting_info['message']
+                        "message": posting_info['message'],
+                        "reason": c_event['additional_info']
                     })
             return data

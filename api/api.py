@@ -391,6 +391,7 @@ def transfer_timestamp(javascript_ts):
     if javascript_ts is None:
         return None
     try:
+        javascript_ts = str(javascript_ts)
         length = len(javascript_ts)
         ts = int(javascript_ts)
     except ValueError:
