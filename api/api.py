@@ -211,7 +211,7 @@ def reply_a_discussion():
 def get_relies_from_discussion():
     if check_params(request.args, ['discussionID', 'offset']):
         with ClusterRpcProxy(CONFIG) as rpc:
-            limit = request.args['limit'] if 'limit' in request else None
+            limit = request.args['limit'] if 'limit' in request.args else None
             if limit:
                 replies = rpc.posting_service.get_replies(request.args['discussionID'], limit, request.args['offset'])
             else:
