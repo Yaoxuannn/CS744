@@ -90,7 +90,7 @@ class EventService(object):
                 "event_id": event.event_id,
                 "initiator": event.initiator,
                 "target": event.target,
-                "created_time": event.created_time.strftime("%Y-%m-%d %H:%M"),
+                "created_time": event.created_time.strftime("%Y-%m-%d %H:%M %p"),
                 "status": event.event_status,
                 "additional_info": event.additional_info
             })

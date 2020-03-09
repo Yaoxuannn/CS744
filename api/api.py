@@ -283,7 +283,7 @@ def search_posting():
                     return pack_response(10002, "Not in the same group")
             start_date = transfer_timestamp(request.json['from'])
             end_date = transfer_timestamp(request.json['to'])
-            if start_date is None or end_date is None:
+            if start_date is False or end_date is False:
                 return pack_response(10002, "Argument Format Error")
             for gid in [x['gid'] for x in user_groups]:
                 postings = rpc.posting_service.search_posting(
@@ -294,7 +294,7 @@ def search_posting():
                     request.json['sender']
                 )
                 for posting in postings:
-                    replies = rpc.posting_service.get_replies(posting['postingID'])
+                    replies = rpc.posting_service.get_replies(posting['discussion_id'])
                     posting.update({"replies": replies})
                     data.append(posting)
             if len(data) == 0:
@@ -395,9 +395,9 @@ def transfer_timestamp(javascript_ts):
         length = len(javascript_ts)
         ts = int(javascript_ts)
     except ValueError:
-        return None
+        return False
     if length != 13:
-        return None
+        return False
     return ts / 1000
 
 

@@ -119,7 +119,7 @@ class PostingService(object):
                     "topic": posting.posting_topic,
                     "senderID": posting.sender,
                     "senderName": user_info['user_name'],
-                    "posting_time": posting.posting_time.strftime("%m/%d/%Y %H:%M"),
+                    "posting_time": posting.posting_time.strftime("%m/%d/%Y %H:%M %p"),
                     "message": posting.message
                 })
         return data
@@ -174,7 +174,7 @@ class PostingService(object):
                     "topic": posting.posting_topic,
                     "senderID": posting.sender,
                     "senderName": user_info["user_name"],
-                    "posting_time": posting.posting_time.strftime("%m/%d/%Y %H:%M"),
+                    "posting_time": posting.posting_time.strftime("%m/%d/%Y %H:%M %p"),
                     "message": posting.message,
                     "discussion_id": posting.discussion_id,
                 })
@@ -228,7 +228,7 @@ class PostingService(object):
                     "senderID": r.sender,
                     "senderName": user_info['user_name'],
                     "message": r.message,
-                    "posting_time": r.posting_time.strftime("%m/%d/%Y %H:%M")
+                    "posting_time": r.posting_time.strftime("%m/%d/%Y %H:%M %p")
                 })
         return data
 
@@ -299,6 +299,32 @@ class PostingService(object):
         result = posting_query.all()
         session.close()
         return self.make_discussion_info(result)
+
+    @rpc
+    def search_replies(self, discussion_id, start_date, end_date, sender):
+        session = Session()
+        data = []
+        posting_query = session.query(Reply).filter(Reply.discussion_id == discussion_id)
+        if start_date:
+            start_date = datetime.fromtimestamp(start_date)
+            posting_query = posting_query.filter(Posting.posting_time >= start_date)
+        if end_date:
+            end_date = datetime.fromtimestamp(end_date)
+            posting_query = posting_query.filter(Posting.posting_time <= end_date)
+        if sender:
+            posting_query = posting_query.filter(Posting.sender == sender)
+        result = posting_query.all()
+        session.close()
+        with ClusterRpcProxy(CONFIG) as _rpc:
+            for r in result:
+                user_info = _rpc.user_service.get_user_info(r.sender)
+                data.append({
+                    "postingID": r.posting_id,
+                    "senderID": r.sender,
+                    "senderName": user_info['user_name'],
+                    "message": r.message,
+                    "posting_time": r.posting_time.strftime("%m/%d/%Y %H:%M %p")
+                })
 
     @rpc
     def approve_posting(self, posting_id):
