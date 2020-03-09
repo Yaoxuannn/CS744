@@ -200,10 +200,10 @@ def get_posting():
 def reply_a_discussion():
     if check_params(request.json, ["senderID", "discussionID", "message"]):
         with ClusterRpcProxy(CONFIG) as rpc:
-            posting_id = rpc.posting_service.reply(request.json['senderID'], request.json['discussionID'],
-                                                   request.json['message'])
+            posting_id, posting_time = rpc.posting_service.reply(request.json['senderID'], request.json['discussionID'],
+                                                                 request.json['message'])
         if posting_id:
-            return pack_response(data={"postingID": posting_id})
+            return pack_response(data={"postingID": posting_id, "posting_time": posting_time})
         return pack_response(10003, "Data Error")
 
 

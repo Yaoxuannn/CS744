@@ -209,7 +209,7 @@ class PostingService(object):
         )
         session.add(new_reply)
         session.commit()
-        return new_reply.posting_id
+        return new_reply.posting_id, new_reply.posting_time.strftime("%m/%d/%Y %H:%M %p")
 
     @rpc
     def get_replies(self, discussion_id, limit=8, offset=0):
@@ -366,7 +366,8 @@ class PostingService(object):
             if deleted_posting.posting_type == 'dissemination':
                 session.delete(deleted_posting)
             else:
-                deleted_replies = session.query(Reply).filter(Reply.discussion_id == deleted_posting.discussion_id).all()
+                deleted_replies = session.query(Reply).filter(
+                    Reply.discussion_id == deleted_posting.discussion_id).all()
                 session.delete(deleted_posting)
                 for reply in deleted_replies:
                     session.delete(reply)
