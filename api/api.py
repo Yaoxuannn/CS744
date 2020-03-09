@@ -388,7 +388,7 @@ def pack_response(status_code=20000, msg="ok", **kwargs):
 
 
 def transfer_timestamp(javascript_ts):
-    if javascript_ts is None:
+    if not javascript_ts:
         return None
     try:
         javascript_ts = str(javascript_ts)
