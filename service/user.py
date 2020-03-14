@@ -47,33 +47,28 @@ class UserSecret(Base):
 
 class UserService(object):
     name = "user_service"
-
+    session = Session()
     sha1 = sha1()
 
     @rpc
     def check_user_type_by_id(self, user_id):
-        session = Session()
-        check_user = session.query(User).filter(User.user_id == user_id).first()
-        session.close()
+        check_user = self.session.query(User).filter(User.user_id == user_id).first()
         return check_user.user_type if check_user else None
 
     @rpc
     def check_user_type_by_token(self, token):
-        session = Session()
-        check_user = session.query(User).filter(User.user_token == token).first()
-        session.close()
+        check_user = self.session.query(User).filter(User.user_token == token).first()
         return check_user.user_type if check_user else None
 
     @rpc
     def get_user_list(self, user_type="*"):
-        session = Session()
         data = []
         if user_type == "*":
-            user_list = session.query(User).all()
+            user_list = self.session.query(User).all()
         else:
-            user_list = session.query(User) \
+            user_list = self.session.query(User) \
                 .filter(User.user_type == user_type) \
-                .filter(User.user_status == "Verified") \
+                .filter(User.user_status == "apporved") \
                 .all()
         for user in user_list:
             data.append({
@@ -85,24 +80,20 @@ class UserService(object):
 
     @rpc
     def search_user(self, username):
-        session = Session()
         data = []
-        users = session.query(User).filter(User.user_fullname.like("%" + username + "%")).all()
+        users = self.session.query(User).filter(User.user_name.like("%" + username + "%")).all()
         for user in users:
             data.append({
                 "userID": user.user_id,
                 "userName": user.user_fullname
             })
-        session.close()
         return data
 
     @rpc
     def get_user_info(self, user_id):
-        session = Session()
-        check_user = session.query(User).filter(User.user_id == user_id).first()
+        check_user = self.session.query(User).filter(User.user_id == user_id).first()
         if not check_user:
             return None
-        session.close()
         return {
             "user_id": check_user.user_id,
             "user_name": check_user.user_name,
@@ -114,9 +105,7 @@ class UserService(object):
 
     @rpc
     def validate_login_code(self, login_code, token, ts):
-        session = Session()
-        right_person = session.query(User).filter(User.user_token == token).first()
-        session.close()
+        right_person = self.session.query(User).filter(User.user_token == token).first()
         if not right_person:
             return 10001, "Wrong token", 0
         if not right_person.user_token:
@@ -139,8 +128,7 @@ class UserService(object):
 
     @rpc
     def user_register(self, user_info):
-        session = Session()
-        existed_username = session.query(User.user_name).filter(User.user_name == user_info['username']).first()
+        existed_username = self.session.query(User.user_name).filter(User.user_name == user_info['username']).first()
         if existed_username:
             return 10002, "Username has already been taken", None
         if user_info['usertype'] in ["patient", "nurse"] and not user_info['associateID']:
@@ -159,33 +147,33 @@ class UserService(object):
             associate_user=user_info['associateID'],
             preferred_info=user_info['preferred'] or "email"
         )
-        session.add(new_user)
-        session.add(UserSecret(user_id=new_user.user_id, secret=self.generate_password()))
-        session.commit()
+        self.session.add(new_user)
+        self.session.add(UserSecret(user_id=new_user.user_id, secret=self.generate_password()))
         with ClusterRpcProxy(CONFIG) as _rpc:
             event_id = _rpc.event_service.add_event(event_type="register", initiator=new_user.user_id,
                                                     target=new_user.user_id)
+            _rpc.event_service.commit()
+            self.commit()
         return 20000, "OK", event_id
 
     @rpc
     def user_login(self, username, password):
-        session = Session()
-        existed_user = session.query(User.user_name).filter(User.user_name == username).first()
+        existed_user = self.session.query(User.user_name).filter(User.user_name == username).first()
         if not existed_user:
-            session.close()
             return 10002, "Non-existed user", None, None
-        if session.query(User).filter(User.user_name == username).first().user_status != "Verified":
+        if self.session.query(User).filter(User.user_name == username).first().user_status != "approved":
             return 10002, "User is not verified", None, None
-        user_id = session.query(User.user_id).filter(User.user_name == username).first()
-        if session.query(UserSecret).filter(UserSecret.user_id == user_id[0], UserSecret.secret == password).first():
+        target_user = self.session.query(User).filter(User.user_name == username).first()
+        if target_user.token is not None:
+            return 10001, "User need to be logged out first.", None, None
+        if self.session.query(UserSecret).filter(UserSecret.user_id == target_user.user_id, UserSecret.secret == password).first():
             self.sha1.update((username + str(time())).encode())
             token = self.sha1.digest().hex()
-            right_user = session.query(User).filter(User.user_name == username).first()
+            right_user = self.session.query(User).filter(User.user_name == username).first()
             right_user.user_token = token
             login_code = self.generate_login_code()
             right_user.login_code = login_code
             email_addr = right_user.user_email
-            session.commit()
             with ClusterRpcProxy(CONFIG) as _rpc:
                 _rpc.mail_service.send_mail(email_addr, "login verification", "Below is your login "
                                                                               "code:<br/><b>%s</b><br/><span>Do not "
@@ -195,76 +183,57 @@ class UserService(object):
 
     @rpc
     def change_password(self, token, old_password, new_password):
-        session = Session()
         if self.check_user_type_by_token(token) is not None:
-            user_id = session.query(User.user_id).filter(User.user_token == token).first()
-            user_secret = session.query(UserSecret) \
+            user_id = self.session.query(User.user_id).filter(User.user_token == token).first()
+            user_secret = self.session.query(UserSecret) \
                 .filter(UserSecret.secret == old_password) \
                 .filter(UserSecret.user_id == user_id[0]).first()
             if not user_secret:
                 return 10001, "User not existed or wrong credential."
             user_secret.secret = new_password
-            session.commit()
-            session.close()
+            self.commit()
             return 20000, "OK"
         return 10002, "User not logged in"
 
     @rpc
     def user_logout(self, token):
-        session = Session()
-        logged_user = session.query(User).filter(User.user_token == token).first()
+        logged_user = self.session.query(User).filter(User.user_token == token).first()
         if not logged_user:
-            return 10001, "token error/user not logged in"
+            return False
         logged_user.user_token = None
         logged_user.login_code = None
-        session.commit()
-        session.close()
-        return 20000, "OK"
-
-    @rpc
-    def get_last_read_id(self, user_id):
-        session = Session()
-        posting_id = session.query(User.last_read_posting_id).filter(User.user_id == user_id).first()
-        session.close()
-        return posting_id
-
-    @rpc
-    def set_last_read_id(self, user_id, posting_id):
-        session = Session()
-        current_user = session.query(User).filter(User.user_id == user_id).first()
-        current_user.last_read_posting_id = posting_id
-        session.commit()
-        session.close()
         return True
 
-    @staticmethod
-    def update_user_status(user_id, status):
-        session = Session()
-        user = session.query(User).filter(User.user_id == user_id).first()
+    @classmethod
+    def update_user_status(cls, user_id, status):
+        user = cls.session.query(User).filter(User.user_id == user_id).first()
         if not user:
-            session.close()
             return False
         user.user_status = status
-        session.commit()
-        session.close()
         return True
 
     @rpc
     def verify_user(self, user_id):
-        session = Session()
         with ClusterRpcProxy(CONFIG) as _rpc:
-            user_email = session.query(User.user_email).filter(User.user_id == user_id).first()
-            user_password = session.query(UserSecret.secret).filter(UserSecret.user_id == user_id).first()
+            user_email = self.session.query(User.user_email).filter(User.user_id == user_id).first()
+            user_password = self.session.query(UserSecret.secret).filter(UserSecret.user_id == user_id).first()
             _rpc.mail_service.send_mail(user_email, "Registration approved", "<i>Congratulations!</i><br/>"
                                                                              "The administrator has approved your registration.<br/>"
                                                                              "Here is your password: <b>%s</b>." % user_password)
-        return self.update_user_status(user_id, "Verified")
+        return self.update_user_status(user_id, "approved")
 
     @rpc
     def reject_user(self, user_id):
-        session = Session()
         with ClusterRpcProxy(CONFIG) as _rpc:
-            user_email = session.query(User.user_email).filter(User.user_id == user_id).first()
+            user_email = self.session.query(User.user_email).filter(User.user_id == user_id).first()
             _rpc.mail_service.send_mail(user_email, "Registration rejected", "<i>Sorry!</i><br/>"
                                                                              "The administrator has rejected your registration.")
-        return self.update_user_status(user_id, "Rejected")
+        return self.update_user_status(user_id, "rejected")
+
+    @rpc
+    def commit(self):
+        self.session.commit()
+
+    @rpc
+    def rollback(self):
+        self.session.rollback()

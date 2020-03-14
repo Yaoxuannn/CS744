@@ -32,7 +32,7 @@ class UserGroup(Base):
 
 class GroupService(object):
     name = "group_service"
-    # session = Session()
+    session = Session()
 
     # @rpc
     # def create_group(self):
@@ -68,21 +68,19 @@ class GroupService(object):
     #     return data
     @rpc
     def add_user_into_group(self, user_id):
-        session = Session()
         with ClusterRpcProxy(CONFIG) as _rpc:
             user_type = _rpc.user_service.check_user_type_by_id(user_id)
         if user_type in ["nurse", "admin", "physician"]:
-            session.add(UserGroup(
+            self.session.add(UserGroup(
                 user_id=user_id,
                 group_id="NPA"
             ))
         if user_type in ["patient", "admin", "physician"]:
-            session.add(UserGroup(
+            self.session.add(UserGroup(
                 user_id=user_id,
                 group_id="PPA"
             ))
-        session.commit()
-        session.close()
+        self.commit()
 
     @rpc
     def get_group_by_user_id(self, user_id):
@@ -96,5 +94,13 @@ class GroupService(object):
                 "groupName": g_name[0]
             })
         return data
+
+    @rpc
+    def commit(self):
+        self.session.commit()
+
+    @rpc
+    def rollback(self):
+        self.session.rollback()
 
 

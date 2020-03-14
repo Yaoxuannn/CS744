@@ -23,12 +23,13 @@ class Event(Base):
     initiator = Column(Text, default="admin")
     created_time = Column(DateTime)
     operated_time = Column(DateTime)
-    event_status = Column(Text, default="open")
+    event_status = Column(Text, default="processing")
     additional_info = Column(Text)
 
 
 class EventService(object):
     name = "event_service"
+    session = Session()
 
     @staticmethod
     def generate_event_id():
@@ -38,10 +39,9 @@ class EventService(object):
         return "{}{}".format(now, sha1_obj.hexdigest()[:7])
 
     @rpc
-    def add_event(self, event_type, initiator, target=None, created_time=datetime.now(), event_status='open', ts=False,
-                  additional_info=None):
+    def add_event(self, event_type, initiator, target=None, created_time=datetime.now(), event_status='processing', ts=False,
+                  operated=False, additional_info=None):
         event_id = self.generate_event_id()
-        session = Session()
         new_event = Event(
             event_id=event_id,
             event_type=event_type,
@@ -52,17 +52,18 @@ class EventService(object):
         )
         if ts:
             new_event.created_time = datetime.fromtimestamp(created_time)
+            if operated:
+                new_event.operated_time = new_event.created_time
         else:
             new_event.created_time = created_time
-        session.add(new_event)
-        session.commit()
-        session.close()
+            if operated:
+                new_event.operated_time = new_event.created_time
+        self.session.add(new_event)
         return event_id
 
     @rpc
     def get_event_info(self, event_id):
-        session = Session()
-        check_event = session.query(Event).filter(Event.event_id == event_id).first()
+        check_event = self.session.query(Event).filter(Event.event_id == event_id).first()
         if check_event:
             return {
                 "event_id": check_event.event_id,
@@ -82,10 +83,9 @@ class EventService(object):
         return event['event_status'] if event else None
 
     @rpc
-    def get_all_events(self, event_type, status='open'):
-        session = Session()
+    def get_all_events(self, event_type, status='processing'):
         data = []
-        for event in session.query(Event).filter(Event.event_type == event_type, Event.event_status == status):
+        for event in self.session.query(Event).filter(Event.event_type == event_type, Event.event_status == status):
             data.append({
                 "event_id": event.event_id,
                 "initiator": event.initiator,
@@ -96,20 +96,26 @@ class EventService(object):
             })
         return data
 
-    @staticmethod
-    def operate_event(event_id, status):
-        session = Session()
-        event = session.query(Event).filter(Event.event_id == event_id).first()
+    @rpc
+    def get_cite_event(self, posting_id):
+        cite_event = self.session.query(Event) \
+            .filter(Event.event_type == 'cite') \
+            .filter(Event.target == posting_id) \
+            .filter(Event.event_status == 'processing') \
+            .first()
+        if cite_event:
+            return self.get_event_info(cite_event.event_id)
+        return None
+
+    @classmethod
+    def operate_event(cls, event_id, status):
+        event = cls.session.query(Event).filter(Event.event_id == event_id).first()
         if not event:
-            session.close()
             return False
-        if event.event_status != "open":
-            session.close()
+        if event.event_status != "processing":
             return False
         event.event_status = status
         event.operated_time = datetime.now()
-        session.commit()
-        session.close()
         return True
 
     @rpc
@@ -119,3 +125,11 @@ class EventService(object):
     @rpc
     def reject(self, event_id):
         return self.operate_event(event_id, "rejected")
+
+    @rpc
+    def commit(self):
+        self.session.commit()
+
+    @rpc
+    def rollback(self):
+        self.session.rollback()

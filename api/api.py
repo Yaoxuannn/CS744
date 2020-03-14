@@ -2,6 +2,7 @@
 from flask import Flask, request, jsonify
 from nameko.standalone.rpc import ClusterRpcProxy
 from collections import namedtuple
+from datetime import datetime
 
 '''
 10001	Permission error
@@ -36,15 +37,19 @@ def user_login():
     password = request.json['password']
     with ClusterRpcProxy(CONFIG) as rpc:
         status, message, token, user_id = rpc.user_service.user_login(username, password)
-    return pack_response(status, message, data={"token": token, "userID": user_id})
+        if token is not None:
+            return pack_response(status, message, data={"token": token, "userID": user_id})
+        return pack_response(status, message)
 
 
 @app.route("/api/v1/logout", methods=['GET'])
 def user_logout():
     if check_params(request.args, ['token']):
         with ClusterRpcProxy(CONFIG) as rpc:
-            status, message = rpc.user_service.user_logout(request.args.get("token"))
-        return pack_response(status, message)
+            result = rpc.user_service.user_logout(request.args.get("token"))
+            if result:
+                return pack_response()
+        return pack_response(10001, "token error/user not logged in")
     return pack_response(10002, "Missing argument")
 
 
@@ -117,7 +122,11 @@ def approve_register():
                 rpc.group_service.add_user_into_group(operated_user_id)
                 if rpc.event_service.approve(request.args['eventID']) and \
                         rpc.user_service.verify_user(operated_user_id):
+                    rpc.event_service.commit()
+                    rpc.user_service.commit()
                     return pack_response()
+            rpc.event_service.rollback()
+            rpc.user_service.rollback()
             return pack_response(10003, "Data Error.")
     return pack_response(10002, "Missing argument")
 
@@ -132,7 +141,11 @@ def reject_register():
             event_info = rpc.event_service.get_event_info(request.args['eventID'])
             if rpc.event_service.reject(request.args['eventID']) and \
                     rpc.user_service.reject_user(event_info['target']):
+                rpc.event_service.commit()
+                rpc.user_service.commit()
                 return pack_response()
+            rpc.event_service.rollback()
+            rpc.user_service.rollback()
             return pack_response(10003, "Data Error")
     return pack_response(10002, "Missing argument")
 
@@ -160,14 +173,19 @@ def get_group_id():
 def add_posting():
     if check_params(request.json, ['senderID', 'type', 'topic', 'message', 'gid']):
         Result = namedtuple("Result", ["event_id", "discussion_id", "posting_time"])
+        if type(request.json['gid']) is not list:
+            return pack_response(10002, "Argument format error")
+        if request.json['type'] == 'discussion' and len(request.json['gid']) > 1:
+            return pack_response(10002, "Argument format error")
         with ClusterRpcProxy(CONFIG) as rpc:
-            result = rpc.posting_service.add_posting(
-                sender_id=request.json['senderID'],
-                posting_type=request.json['type'],
-                topic=request.json['topic'],
-                message=request.json['message'],
-                gid=request.json['gid']
-            )
+            for g in request.json['gid']:
+                result = rpc.posting_service.add_posting(
+                    sender_id=request.json['senderID'],
+                    posting_type=request.json['type'],
+                    topic=request.json['topic'],
+                    message=request.json['message'],
+                    gid=g
+                )
         if result is True:
             return pack_response()
         if result:
@@ -175,6 +193,7 @@ def add_posting():
             return pack_response(data={"eventID": result.event_id, "discussionID": result.discussion_id,
                                        "posting_time": result.posting_time})
         return pack_response(10003, "Data Error")
+    return pack_response(10002, "Missing argument")
 
 
 @app.route("/api/v1/getPosting", methods=['GET'])
@@ -295,7 +314,8 @@ def search_posting():
                 )
                 for posting in postings:
                     replies = rpc.posting_service.get_replies(posting['discussion_id'])
-                    posting.update({"replies": replies})
+                    if len(replies) > 0:
+                        posting.update({"replies": replies})
                     data.append(posting)
             if len(data) == 0:
                 return pack_response(msg="No result")
@@ -305,15 +325,18 @@ def search_posting():
 
 @app.route("/api/v1/cite", methods=['GET'])
 def cite_posting():
-    if check_params(request.args, ['userID', 'postingID', 'reason']):
+    if check_params(request.args, ['userID', 'postingID', 'type', 'reason']):
         with ClusterRpcProxy(CONFIG) as rpc:
-            # TODO: 检测posting不存在的情况, 看起来还需要过滤一下用户ID
-            if rpc.posting_service.get_cite_event(request.args['postingID']):
+            if not rpc.posting_service.has_this_posting(request.args['posting_id']):
+                return pack_response(10002, "postingID error")
+            if rpc.user_service.get_user_info(request.args['userID']) is None:
+                return pack_response(10002, "userID error")
+            if rpc.event_service.get_cite_event(request.args['postingID']):
                 return pack_response(10002, "This posting has been cited.")
             event_id = rpc.event_service.add_event("cite", request.args['userID'], request.args['postingID'],
-                                                   additional_info=request.args['reason'])
+                                                   additional_info=request.args['type'] + "@@" + request.args['reason'])
             if event_id:
-                rpc.posting_service.set_cite_event(request.args['postingID'], event_id)
+                rpc.event_service.commit()
                 return pack_response()
             return pack_response(10003, "Data Error")
     return pack_response(10002, "Missing Argument")
@@ -326,8 +349,27 @@ def get_cite_list():
             user_type = rpc.user_service.check_user_type_by_token(request.args["token"])
             if user_type != "admin":
                 return pack_response(10001, "Not authorized")
-            events = rpc.posting_service.get_cite_list()
-            return pack_response(data={"cite_list": events})
+            cite_list = rpc.event_service.get_all_events("cite")
+            data = []
+            for cite_event in cite_list:
+                posting_info = rpc.posting_service.get_posting_info(cite_event['target'])
+                informer_info = rpc.user_service.get_user_info(cite_event["initiator"])
+                sender_info = rpc.user_service.get_user_info(posting_info['sender'])
+                data.append({
+                    "eventID": cite_event['event_id'],
+                    "postingID": posting_info['posting_id'],
+                    "postingType": posting_info['posting_type'],
+                    "postingStatus": posting_info['posting_status'],
+                    "informerID": informer_info["user_id"],
+                    "informerName": informer_info['full_name'],
+                    "senderID": posting_info['sender'],
+                    "senderName": sender_info['full_name'],
+                    "posting_time": posting_info['posting_time'].strftime("%m/%d/%Y %H:%M"),
+                    "topic": posting_info['topic'],
+                    "message": posting_info['message'],
+                    "reason": cite_event['additional_info']
+                })
+            return pack_response(data={"cite_list": data})
     return pack_response(10002, "Missing Argument")
 
 
@@ -340,7 +382,7 @@ def remove_cited_posting():
             user_type = rpc.user_service.check_user_type_by_token(request.args["token"])
             if user_type != "admin":
                 return pack_response(10001, "Not authorized")
-            cite_event = rpc.posting_service.get_cite_event(request.args['postingID'])
+            cite_event = rpc.event_service.get_cite_event(request.args['postingID'])
             if cite_event:
                 rpc.event_service.approve(cite_event["event_id"])
                 deleted_posting = rpc.posting_service.remove_a_posting(request.args['postingID'])
@@ -361,9 +403,21 @@ def ignore_cite():
             if user_type != "admin":
                 return pack_response(10001, "Not authorized")
             rpc.event_service.reject(request.args['eventID'])
-            rpc.posting_service.ignore_a_cite(request.args['eventID'])
-            # TODO: 考虑给举报人发个邮件
+            rpc.event_service.commit()
             return pack_response()
+    return pack_response(10002, "Missing Argument")
+
+
+@app.route("/api/v1/terminatePosting", methods=['GET'])
+def terminate_posting():
+    if check_params(request.args, ['postingID', 'userID']):
+        with ClusterRpcProxy(CONFIG) as rpc:
+            target_posting = rpc.posting_service.get_posting_info(request.args['postingID'])
+            if target_posting['posting_type'] == "discussion" and target_posting['posting_status'] == "open":
+                if target_posting['sender'] == request.args['userID']:
+                    rpc.posting_service.terminate_a_posting(request.args["postingID"])
+                    return True
+        return pack_response(10002, "Argument Error")
     return pack_response(10002, "Missing Argument")
 
 
@@ -407,6 +461,14 @@ def clean_params(params):
         if not v:
             _params.pop(k)
     return _params
+
+
+# def format_time(timestamp):
+#     if type(timestamp) is datetime:
+#         return timestamp.strftime("%m/%d/%Y %H:%M %p")
+#     if type(timestamp) is str:
+#         return timestamp
+#     return timestamp
 
 
 @app.before_request
