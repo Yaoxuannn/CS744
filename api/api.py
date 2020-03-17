@@ -417,7 +417,45 @@ def terminate_posting():
                 if target_posting['sender'] == request.args['userID']:
                     rpc.posting_service.terminate_a_posting(request.args["postingID"])
                     return True
-        return pack_response(10002, "Argument Error")
+            return pack_response(10002, "Not authorized or argument error")
+    return pack_response(10002, "Missing Argument")
+
+
+@app.route("/api/v1/getAllKeywords", methods=['GET'])
+def get_all_keywords():
+    if check_params(request.args, ['token']):
+        with ClusterRpcProxy(CONFIG) as rpc:
+            user_type = rpc.user_service.check_user_type_by_token(request.args["token"])
+            if user_type != "admin":
+                return pack_response(10001, "Not authorized")
+            keywords = rpc.dict_service.get_all_keywords()
+            return pack_response(data={"keywords": keywords})
+    return pack_response(10002, "Missing Argument")
+
+
+@app.route("/api/v1/addKeyword", methods=['GET'])
+def add_a_keywords():
+    if check_params(request.args, ['keyword', 'token']):
+        with ClusterRpcProxy(CONFIG) as rpc:
+            user_type = rpc.user_service.check_user_type_by_token(request.args["token"])
+            if user_type != "admin":
+                return pack_response(10001, "Not authorized")
+            if rpc.dict_service.add_a_keyword(request.args['keyword']):
+                return pack_response()
+            return pack_response(10003, "Data Error")
+    return pack_response(10002, "Missing Argument")
+
+
+@app.route("/api/v1/removeKeywords", methods=['GET'])
+def remove_a_keyword():
+    if check_params(request.args, ['keyword', 'token']):
+        with ClusterRpcProxy(CONFIG) as rpc:
+            user_type = rpc.user_service.check_user_type_by_token(request.args["token"])
+            if user_type != "admin":
+                return pack_response(10001, "Not authorized")
+            if rpc.dict_service.remove_a_keyword(request.args['keyword']):
+                return pack_response()
+            return pack_response(10003, "Data Error")
     return pack_response(10002, "Missing Argument")
 
 
