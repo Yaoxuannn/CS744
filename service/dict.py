@@ -5,13 +5,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-
 Base = declarative_base()
-engine = create_engine('sqlite:///../posting.db')
+engine = create_engine('sqlite:///../dict.db')
 Session = sessionmaker()
 Session.configure(bind=engine)
-
-CONFIG = {'AMQP_URI': "amqp://guest:guest@localhost"}
 
 
 class Keyword(Base):

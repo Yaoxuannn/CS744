@@ -34,38 +34,6 @@ class GroupService(object):
     name = "group_service"
     session = Session()
 
-    # @rpc
-    # def create_group(self):
-    #     pass
-
-    # @rpc
-    # def get_physician(self, group_id):
-    #     return self.session.query(Group.physician_id).filter(Group.group_id == group_id).first()
-    #
-    # @rpc
-    # def get_patient(self, group_id):
-    #     return self.session.query(Group.patient_id).filter(Group.group_id == group_id).first()
-    #
-    # @rpc
-    # def get_admin(self, group_id):
-    #     return self.session.query(Group.administrator_id).filter(Group.group_id == group_id).first()
-    #
-    # @rpc
-    # def get_nurse(self, group_id):
-    #     return self.session.query(Group.nurse_id).filter(Group.group_id == group_id).first()
-    #
-    # @rpc
-    # def get_user_groups(self, user_id):
-    #     data = []
-    #     groups = self.session.query(Group).filter(
-    #         or_(Group.physician_id == user_id, Group.nurse_id == user_id, Group.patient_id == user_id,
-    #             Group.administrator_id == user_id).all())
-    #     for g in groups:
-    #         data.append({
-    #             "groupID": g.group_id,
-    #             "groupName": g.group_name
-    #         })
-    #     return data
     @rpc
     def add_user_into_group(self, user_id):
         with ClusterRpcProxy(CONFIG) as _rpc:
