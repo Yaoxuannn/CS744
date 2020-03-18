@@ -434,7 +434,7 @@ def get_all_keywords():
             user_type = rpc.user_service.check_user_type_by_token(request.args["token"])
             if user_type != "admin":
                 return pack_response(10001, "Not authorized")
-            keywords = rpc.dict_service.get_all_keywords()
+            keywords = rpc.keyword_service.get_all_keywords()
             return pack_response(data={"keywords": keywords})
     return pack_response(10002, "Missing Argument")
 
@@ -446,7 +446,7 @@ def add_a_keywords():
             user_type = rpc.user_service.check_user_type_by_token(request.args["token"])
             if user_type != "admin":
                 return pack_response(10001, "Not authorized")
-            if rpc.dict_service.add_a_keyword(request.args['keyword']):
+            if rpc.keyword_service.add_a_keyword(request.args['keyword']):
                 return pack_response()
             return pack_response(10003, "Data Error")
     return pack_response(10002, "Missing Argument")
@@ -459,7 +459,7 @@ def remove_a_keyword():
             user_type = rpc.user_service.check_user_type_by_token(request.args["token"])
             if user_type != "admin":
                 return pack_response(10001, "Not authorized")
-            if rpc.dict_service.remove_a_keyword(request.args['keyword']):
+            if rpc.keyword_service.remove_a_keyword(request.args['keyword']):
                 return pack_response()
             return pack_response(10003, "Data Error")
     return pack_response(10002, "Missing Argument")

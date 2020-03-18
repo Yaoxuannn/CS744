@@ -19,7 +19,7 @@ class Keyword(Base):
 
 
 class KeywordService(object):
-    name = "dict_service"
+    name = "keyword_service"
     session = Session()
 
     @classmethod
