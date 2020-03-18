@@ -49,6 +49,19 @@ class KeywordService(object):
         return True
 
     @rpc
+    def check_discussion_posting(self, message, topic=None):
+        for word in message.split(" "):
+            match = self.session.query(Keyword).filter(Keyword.keyword == word.lower()).first()
+            if match is not None:
+                return True
+        if topic:
+            for word in topic.split(" "):
+                match = self.session.query(Keyword).filter(Keyword.keyword == word.lower()).first()
+                if match is not None:
+                    return True
+        return False
+
+    @rpc
     def rollback(self):
         self.session.rollback()
 

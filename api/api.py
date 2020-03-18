@@ -1,8 +1,8 @@
 # coding=utf-8
+from collections import namedtuple
+
 from flask import Flask, request, jsonify
 from nameko.standalone.rpc import ClusterRpcProxy
-from collections import namedtuple
-from datetime import datetime
 
 '''
 10001	Permission error
@@ -186,6 +186,8 @@ def add_posting():
                     message=request.json['message'],
                     gid=g
                 )
+        if result is False:
+            return pack_response(10002, "No keyword found")
         if result is True:
             return pack_response()
         if result:
@@ -218,11 +220,15 @@ def get_posting():
 @app.route("/api/v1/reply", methods=['POST'])
 def reply_a_discussion():
     if check_params(request.json, ["senderID", "discussionID", "message"]):
+        Result = namedtuple("Result", ["posting_id", "posting_time"])
         with ClusterRpcProxy(CONFIG) as rpc:
-            posting_id, posting_time = rpc.posting_service.reply(request.json['senderID'], request.json['discussionID'],
-                                                                 request.json['message'])
-        if posting_id:
-            return pack_response(data={"postingID": posting_id, "posting_time": posting_time})
+            result = rpc.posting_service.reply(request.json['senderID'], request.json['discussionID'],
+                                               request.json['message'])
+        if result is False:
+            return pack_response(10002, "No keywords found")
+        if result:
+            result = Result._make(result)
+            return pack_response(data={"postingID": result.posting_id, "posting_time": result.posting_time})
         return pack_response(10003, "Data Error")
 
 

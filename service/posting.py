@@ -1,14 +1,14 @@
 # coding=utf-8
+from datetime import datetime
+from hashlib import md5
+from time import time
+
 from nameko.rpc import rpc
 from nameko.standalone.rpc import ClusterRpcProxy
-from datetime import datetime
 from sqlalchemy import Column, Text, DateTime
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-
-from hashlib import md5
-from time import time
 
 Base = declarative_base()
 engine = create_engine('sqlite:///../posting.db')
@@ -66,16 +66,17 @@ class PostingService(object):
     def add_posting(self, sender_id, posting_type, topic, message, gid):
         with ClusterRpcProxy(CONFIG) as _rpc:
             user_type = _rpc.user_service.check_user_type_by_id(sender_id)
-        new_posting = Posting(
-            posting_id=self.generate_posting_id(),
-            sender=sender_id,
-            posting_time=datetime.now(),
-            posting_type=posting_type,
-            posting_topic=topic,
-            message=message,
-            group_id=gid
-        )
-        with ClusterRpcProxy(CONFIG) as _rpc:
+            if _rpc.keyword_service.check_discussion_posting(message, topic) is False:
+                return False
+            new_posting = Posting(
+                posting_id=self.generate_posting_id(),
+                sender=sender_id,
+                posting_time=datetime.now(),
+                posting_type=posting_type,
+                posting_topic=topic,
+                message=message,
+                group_id=gid
+            )
             if posting_type == 'dissemination':
                 new_posting.event_id = event_id = None
             else:
@@ -171,6 +172,9 @@ class PostingService(object):
             return None
         if discussion_posting.posting_status == "terminated":
             return None
+        with ClusterRpcProxy(CONFIG) as _rpc:
+            if _rpc.keyword_service.check_discussion_posting(message) is False:
+                return False
         new_reply = Reply(
             posting_id=self.generate_posting_id(),
             discussion_id=discussion_id,
