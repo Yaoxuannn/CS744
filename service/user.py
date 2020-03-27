@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from nameko.rpc import rpc
 from nameko.standalone.rpc import ClusterRpcProxy
-from sqlalchemy import Column, Text, Text
+from sqlalchemy import Column, Text
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -25,6 +25,8 @@ class User(Base):
 
     user_id = Column(Text, primary_key=True, unique=True, nullable=False)
     user_name = Column(Text, unique=True)
+    user_firstname = Column(Text)
+    user_lastname = Column(Text)
     user_fullname = Column(Text)
     user_email = Column(Text)
     user_phone = Column(Text)
@@ -98,9 +100,13 @@ class UserService(object):
             "user_id": check_user.user_id,
             "user_name": check_user.user_name,
             "full_name": check_user.user_fullname,
+            "first_name": check_user.user_firstname,
+            "last_name": check_user.user_lastname,
             "user_type": check_user.user_type,
             "email": check_user.user_email,
-            "mobile": check_user.user_phone
+            "mobile": check_user.user_phone,
+            "associateID": check_user.associate_user,
+            "additional_info": check_user.addition_info
         }
 
     @rpc
@@ -138,23 +144,26 @@ class UserService(object):
             return 10002, "Wrong Value", None
         new_user = User(
             user_id=self.generate_user_id(),
-            user_fullname=user_info['fullname'],
+            user_firstname=user_info['firstname'],
+            user_lastname=user_info['lastname'],
+            user_fullname=user_info['firstname'] + " " + user_info['lastname'],
             user_name=user_info['username'],
             user_type=user_info['usertype'],
             user_email=user_info['email'],
             user_phone=user_info['mobile'],
             user_status="Processing",
             associate_user=user_info['associateID'],
-            preferred_info=user_info['preferred'] or "email"
+            preferred_info=user_info['preferred'] or "email",
+            addition_info=user_info['additional_info']
         )
         self.session.add(new_user)
         self.session.add(UserSecret(user_id=new_user.user_id, secret=self.generate_password()))
         with ClusterRpcProxy(CONFIG) as _rpc:
-            event_id = _rpc.event_service.add_event(event_type="register", initiator=new_user.user_id,
-                                                    target=new_user.user_id)
+            _rpc.event_service.add_event(event_type="register", initiator=new_user.user_id, target=new_user.user_id,
+                                         additional_info=user_info['additional_info'])
             _rpc.event_service.commit()
             self.commit()
-        return 20000, "OK", event_id
+        return 20000, "OK"
 
     @rpc
     def user_login(self, username, password):
@@ -166,7 +175,8 @@ class UserService(object):
         target_user = self.session.query(User).filter(User.user_name == username).first()
         if target_user.token is not None:
             return 10001, "User need to be logged out first.", None, None
-        if self.session.query(UserSecret).filter(UserSecret.user_id == target_user.user_id, UserSecret.secret == password).first():
+        if self.session.query(UserSecret).filter(UserSecret.user_id == target_user.user_id,
+                                                 UserSecret.secret == password).first():
             self.sha1.update((username + str(time())).encode())
             token = self.sha1.digest().hex()
             right_user = self.session.query(User).filter(User.user_name == username).first()

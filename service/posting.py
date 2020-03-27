@@ -112,6 +112,8 @@ class PostingService(object):
             for posting in postings:
                 user_info = _rpc.user_service.get_user_info(posting.sender)
                 data.append({
+                    "postingID": posting.posting_id,
+                    "postingType": posting.posting_type,
                     "topic": posting.posting_topic,
                     "senderID": posting.sender,
                     "senderName": user_info['user_name'],

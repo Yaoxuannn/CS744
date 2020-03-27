@@ -56,14 +56,15 @@ def user_logout():
 @app.route("/api/v1/register", methods=['POST'])
 def user_register():
     if check_params(request.get_json(),
-                    ['fullname', "username", "usertype", "email", "mobile", "preferred", "associateID"]):
+                    ["firstname", "lastname", "username", "usertype", "email", "mobile", "preferred", "associateID",
+                     "additionalInfo"]):
         if not request.json['email'] and not request.json['mobile']:
             return pack_response(10002, "Email and mobile must be provided at least one.")
         if request.json['usertype'] not in ['physician', 'nurse', 'patient']:
             return pack_response(10002, "usertype format error")
         with ClusterRpcProxy(CONFIG) as rpc:
-            status, message, event_id = rpc.user_service.user_register(request.json)
-        return pack_response(status, message, data={"eventID": event_id})
+            status, message = rpc.user_service.user_register(request.json)
+        return pack_response(status, message)
     return pack_response(10002, "Missing argument")
 
 
@@ -100,11 +101,24 @@ def get_register_list():
             data = []
             for event in register_list:
                 user_info = rpc.user_service.get_user_info(event["target"])
-                user_info.update({
+                if user_info['user_type'] == "patient":
+                    physician_id = rpc.user_service.get_user_info(event['additional_info'])['additional_info']
+                data.append({
                     "eventID": event['event_id'],
+                    "userID": user_info['user_id'],
+                    "firstname": user_info['first_name'],
+                    "lastname": user_info['last_name'],
+                    "username": user_info['username'],
+                    "usertype": user_info['user_type'],
+                    "email": user_info['email'],
+                    "mobile": user_info['mobile'],
+                    "isValid": rpc.hospital_service.is_user_exist(event['additional_info']),
+                    "nameMatch": rpc.hospital_service.check_user_name(event['additional_info'], user_info['first_name'],
+                                                                      user_info['last_name']),
+                    "physicianExist": rpc.hospital_service.is_user_exist(physician_id) if user_info[
+                                                                                              'user_type'] == "patient" else "",
                     "registerTime": event['created_time']
                 })
-                data.append(user_info)
             return pack_response(data={"register_list": data})
     return pack_response(10002, "Missing argument")
 
