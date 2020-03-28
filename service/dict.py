@@ -28,7 +28,11 @@ class KeywordService(object):
 
     @rpc
     def get_all_keywords(self):
-        return self.session.query(Keyword.keyword).all()
+        keywords = []
+        data = self.session.query(Keyword).all()
+        for entry in data:
+            keywords.append(entry.keyword)
+        return keywords
 
     @rpc
     def add_a_keyword(self, keyword):

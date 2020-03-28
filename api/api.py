@@ -462,11 +462,11 @@ def add_a_keywords():
                 return pack_response(10001, "Not authorized")
             if rpc.keyword_service.add_a_keyword(request.args['keyword']):
                 return pack_response()
-            return pack_response(10003, "Data Error")
+            return pack_response(10003, "Duplicate keyword")
     return pack_response(10002, "Missing Argument")
 
 
-@app.route("/api/v1/removeKeywords", methods=['GET'])
+@app.route("/api/v1/removeKeyword", methods=['GET'])
 def remove_a_keyword():
     if check_params(request.args, ['keyword', 'token']):
         with ClusterRpcProxy(CONFIG) as rpc:
@@ -475,7 +475,7 @@ def remove_a_keyword():
                 return pack_response(10001, "Not authorized")
             if rpc.keyword_service.remove_a_keyword(request.args['keyword']):
                 return pack_response()
-            return pack_response(10003, "Data Error")
+            return pack_response(10003, "Non-existed keyword")
     return pack_response(10002, "Missing Argument")
 
 
