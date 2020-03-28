@@ -173,7 +173,7 @@ class UserService(object):
         if self.session.query(User).filter(User.user_name == username).first().user_status != "approved":
             return 10002, "User is not verified", None, None
         target_user = self.session.query(User).filter(User.user_name == username).first()
-        if target_user.token is not None:
+        if target_user.user_token is not None:
             return 10001, "User need to be logged out first.", None, None
         if self.session.query(UserSecret).filter(UserSecret.user_id == target_user.user_id,
                                                  UserSecret.secret == password).first():
@@ -188,6 +188,7 @@ class UserService(object):
                 _rpc.mail_service.send_mail(email_addr, "login verification", "Below is your login "
                                                                               "code:<br/><b>%s</b><br/><span>Do not "
                                                                               "share your code!<span>" % login_code)
+                self.commit()
             return 20000, "OK", token, right_user.user_id
         return 10001, "Wrong credential", None, None
 
