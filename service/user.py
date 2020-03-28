@@ -154,7 +154,7 @@ class UserService(object):
             user_status="Processing",
             associate_user=user_info['associateID'],
             preferred_info=user_info['preferred'] or "email",
-            addition_info=user_info['additional_info']
+            addition_info=user_info['additionalInfo']
         )
         self.session.add(new_user)
         self.session.add(UserSecret(user_id=new_user.user_id, secret=self.generate_password()))
