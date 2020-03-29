@@ -116,7 +116,11 @@ class UserService(object):
             return 10001, "Wrong token", 0
         if not right_person.user_token:
             return 10002, "User is not logged in", 0
+        if not right_person.login_code:
+            return 10002, "User has been logged in", 0
         if str(right_person.login_code) == login_code:
+            right_person.login_code = None
+            self.session.commit()
             return 20000, "OK", 1
         return 10001, "Wrong code", 0
 
