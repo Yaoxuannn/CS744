@@ -347,7 +347,7 @@ def search_posting():
 def cite_posting():
     if check_params(request.args, ['userID', 'postingID', 'type', 'reason']):
         with ClusterRpcProxy(CONFIG) as rpc:
-            if not rpc.posting_service.has_this_posting(request.args['posting_id']):
+            if not rpc.posting_service.has_this_posting(request.args['postingID']):
                 return pack_response(10002, "postingID error")
             if rpc.user_service.get_user_info(request.args['userID']) is None:
                 return pack_response(10002, "userID error")
