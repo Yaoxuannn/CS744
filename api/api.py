@@ -433,10 +433,12 @@ def terminate_posting():
     if check_params(request.args, ['postingID', 'userID']):
         with ClusterRpcProxy(CONFIG) as rpc:
             target_posting = rpc.posting_service.get_posting_info(request.args['postingID'])
+            if target_posting is None:
+                return pack_response(10002, "Posting ID error.")
             if target_posting['posting_type'] == "discussion" and target_posting['posting_status'] == "open":
                 if target_posting['sender'] == request.args['userID']:
                     rpc.posting_service.terminate_a_posting(request.args["postingID"])
-                    return True
+                    return pack_response()
             return pack_response(10002, "Not authorized or argument error")
     return pack_response(10002, "Missing Argument")
 

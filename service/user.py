@@ -136,12 +136,12 @@ class UserService(object):
     def user_register(self, user_info):
         existed_username = self.session.query(User.user_name).filter(User.user_name == user_info['username']).first()
         if existed_username:
-            return 10002, "Username has already been taken", None
+            return 10002, "Username has already been taken"
         if user_info['usertype'] in ["patient", "nurse"] and not user_info['associateID']:
-            return 10002, "Missing Value", None
+            return 10002, "Missing Value"
         if user_info['usertype'] in ["patient", "nurse"] and self.check_user_type_by_id(
                 user_info['associateID']) != "physician":
-            return 10002, "Wrong Value", None
+            return 10002, "Wrong Value"
         new_user = User(
             user_id=self.generate_user_id(),
             user_firstname=user_info['firstname'],
@@ -160,7 +160,7 @@ class UserService(object):
         self.session.add(UserSecret(user_id=new_user.user_id, secret=self.generate_password()))
         with ClusterRpcProxy(CONFIG) as _rpc:
             _rpc.event_service.add_event(event_type="register", initiator=new_user.user_id, target=new_user.user_id,
-                                         additional_info=user_info['additional_info'])
+                                         additional_info=user_info['additionalInfo'])
             _rpc.event_service.commit()
             self.commit()
         return 20000, "OK"
