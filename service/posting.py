@@ -5,7 +5,7 @@ from time import time
 
 from nameko.rpc import rpc
 from nameko.standalone.rpc import ClusterRpcProxy
-from sqlalchemy import Column, Text, DateTime
+from sqlalchemy import Column, Text, DateTime, or_
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -161,7 +161,7 @@ class PostingService(object):
         postings = self.session.query(Posting) \
             .filter(Posting.posting_type == 'discussion') \
             .filter(Posting.group_id == group_id) \
-            .filter(Posting.posting_status == "open") \
+            .filter(or_(Posting.posting_status == "open", Posting.posting_status == "terminated")) \
             .order_by(Posting.posting_time.desc()) \
             .all()
         data = self.make_posting_info(postings)
@@ -226,7 +226,7 @@ class PostingService(object):
     @rpc
     def search_posting(self, gid, topic, start_date, end_date, sender):
         posting_query = self.session.query(Posting) \
-            .filter(Posting.posting_status == "open") \
+            .filter(or_(Posting.posting_status == "open", Posting.posting_status == "terminated")) \
             .filter(Posting.group_id == gid)
         if start_date:
             start_date = datetime.fromtimestamp(start_date)

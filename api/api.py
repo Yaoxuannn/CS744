@@ -108,7 +108,7 @@ def get_register_list():
                     "userID": user_info['user_id'],
                     "firstname": user_info['first_name'],
                     "lastname": user_info['last_name'],
-                    "username": user_info['username'],
+                    "username": user_info['user_name'],
                     "usertype": user_info['user_type'],
                     "email": user_info['email'],
                     "mobile": user_info['mobile'],
@@ -538,6 +538,7 @@ def options_handler():
         res.headers['Access-Control-Allow-Methods'] = "GET, POST"
         res.headers['Access-Control-Allow-Headers'] = 'content-type'
         res.headers['Access-Control-Allow-Credentials'] = "true"
+        res.headers['Access-Control-Allow-Origin'] = "*"
         res.headers['Access-Control-Max-Age'] = "1728000"
         return res
     else:
