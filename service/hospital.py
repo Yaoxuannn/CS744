@@ -33,7 +33,8 @@ class HospitalService(object):
 
     @rpc
     def is_user_exist(self, user_id):
-        return self.session.query(HospitalUser).filter(HospitalUser.hospital_id == user_id).exists().scalar()
+
+        return self.session.query(HospitalUser).exists().filter(HospitalUser.hospital_id == user_id).scalar()
 
     @rpc
     def check_user_name(self, user_id, first_name, last_name):

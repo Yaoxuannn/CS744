@@ -496,8 +496,7 @@ def pack_response(status_code=20000, msg="ok", **kwargs):
     for k, v in kwargs.items():
         data.update({k: v})
     res = jsonify(data)
-    res.headers['Access-Control-Allow-Origin'] = "*"
-    res.headers['X-XSS-Protection'] = "1"
+    res.headers.add('Access-Control-Allow-Origin', '*')
     return res
 
 
