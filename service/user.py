@@ -173,10 +173,10 @@ class UserService(object):
         if self.session.query(User).filter(User.user_name == username).first().user_status != "approved":
             return 10002, "User is not verified", None, None
         target_user = self.session.query(User).filter(User.user_name == username).first()
-        if target_user.user_token:
-            return 10001, "User need to be logged out first.", None, None
         if self.session.query(UserSecret).filter(UserSecret.user_id == target_user.user_id,
                                                  UserSecret.secret == password).first():
+            if target_user.user_token:
+                return 10001, "User need to be logged out first.", None, None
             self.sha1.update((username + str(time())).encode())
             token = self.sha1.digest().hex()
             right_user = self.session.query(User).filter(User.user_name == username).first()
