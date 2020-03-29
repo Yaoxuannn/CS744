@@ -4,6 +4,7 @@ from sqlalchemy import Column, Text, Date
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.sql import exists
 
 Base = declarative_base()
 engine = create_engine('sqlite:///../hospital.db')
@@ -33,8 +34,7 @@ class HospitalService(object):
 
     @rpc
     def is_user_exist(self, user_id):
-
-        return self.session.query(HospitalUser).exists().filter(HospitalUser.hospital_id == user_id).scalar()
+        return self.session.query(exists().where(HospitalUser.hospital_id == user_id)).scalar()
 
     @rpc
     def check_user_name(self, user_id, first_name, last_name):
