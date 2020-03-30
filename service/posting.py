@@ -202,13 +202,16 @@ class PostingService(object):
     def get_posting_info(self, posting_id):
         topic = None
         posting_type = ''
+        posting_status = ''
         target_posting = self.session.query(Posting).filter(Posting.posting_id == posting_id).first()
         if target_posting:
+            posting_status = target_posting.posting_status
             posting_type = target_posting.posting_type
         else:
             target_posting = self.session.query(Reply).filter(Reply.posting_id == posting_id).first()
             if target_posting:
                 posting_type = "discussion"
+                posting_status = ""
                 topic = self.session.query(Posting).filter(
                     Posting.discussion_id == target_posting.discussion_id).first().posting_topic
         if target_posting:
@@ -219,7 +222,7 @@ class PostingService(object):
                 "posting_time": target_posting.posting_time.strftime("%m/%d/%Y %H:%M %p"),
                 "topic": topic if topic else target_posting.posting_topic,
                 "message": target_posting.message,
-                "posting_status": target_posting.posting_status
+                "posting_status": posting_status
             }
         return None
 
