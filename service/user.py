@@ -70,7 +70,7 @@ class UserService(object):
         else:
             user_list = self.session.query(User) \
                 .filter(User.user_type == user_type) \
-                .filter(User.user_status == "apporved") \
+                .filter(User.user_status == "approved") \
                 .all()
         for user in user_list:
             data.append({
