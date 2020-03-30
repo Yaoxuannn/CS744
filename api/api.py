@@ -384,7 +384,7 @@ def get_cite_list():
                     "informerName": informer_info['full_name'],
                     "senderID": posting_info['sender'],
                     "senderName": sender_info['full_name'],
-                    "posting_time": posting_info['posting_time'].strftime("%m/%d/%Y %H:%M"),
+                    "posting_time": posting_info['posting_time'],
                     "topic": posting_info['topic'],
                     "message": posting_info['message'],
                     "reason": cite_event['additional_info']
