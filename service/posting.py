@@ -326,11 +326,9 @@ class PostingService(object):
             return posting_list
 
     @rpc
-    def has_this_posting(self, posting_id, readable=True):
+    def has_this_posting(self, posting_id):
         posting = self.session.query(Posting) \
             .filter(Posting.posting_id == posting_id)
-        if readable:
-            posting = posting.filter(Posting.posting_status == 'open').first()
         if posting:
             return True
         reply = self.session.query(Reply).filter(Reply.posting_id == posting_id).first()
