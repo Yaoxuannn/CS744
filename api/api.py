@@ -431,6 +431,7 @@ def ignore_cite():
 @app.route("/api/v1/terminatePosting", methods=['GET'])
 def terminate_posting():
     if check_params(request.args, ['postingID', 'userID']):
+        # postingID -> discussionID
         with ClusterRpcProxy(CONFIG) as rpc:
             target_posting = rpc.posting_service.get_posting_info(request.args['postingID'])
             if target_posting is None:

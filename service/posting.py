@@ -216,7 +216,7 @@ class PostingService(object):
                 "posting_id": target_posting.posting_id,
                 "posting_type": posting_type,
                 "sender": target_posting.sender,
-                "posting_time": target_posting.posting_time,
+                "posting_time": target_posting.posting_time.strftime("%m/%d/%Y %H:%M %p"),
                 "topic": topic if topic else target_posting.posting_topic,
                 "message": target_posting.message,
                 "posting_status": target_posting.posting_status
