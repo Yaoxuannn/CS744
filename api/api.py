@@ -378,8 +378,6 @@ def get_cite_list():
                 data.append({
                     "eventID": cite_event['event_id'],
                     "postingID": posting_info['posting_id'],
-                    "postingType": posting_info['posting_type'],
-                    "postingStatus": posting_info['posting_status'],
                     "informerID": informer_info["user_id"],
                     "informerName": informer_info['full_name'],
                     "senderID": posting_info['sender'],
@@ -387,7 +385,8 @@ def get_cite_list():
                     "posting_time": posting_info['posting_time'],
                     "topic": posting_info['topic'],
                     "message": posting_info['message'],
-                    "reason": cite_event['additional_info']
+                    "type": cite_event['additional_info'].split("@@")[0],
+                    "reason": cite_event['additional_info'].split("@@")[1]
                 })
             return pack_response(data={"cite_list": data})
     return pack_response(10002, "Missing Argument")
