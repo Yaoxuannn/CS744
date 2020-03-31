@@ -102,7 +102,7 @@ def get_register_list():
             for event in register_list:
                 user_info = rpc.user_service.get_user_info(event["target"])
                 if user_info['user_type'] == "patient":
-                    physician_id = user_info['associateID']
+                    physician_id = event['additional_info']
                 data.append({
                     "eventID": event['event_id'],
                     "userID": user_info['user_id'],
