@@ -87,7 +87,7 @@ class UserService(object):
         for user in users:
             data.append({
                 "userID": user.user_id,
-                "userName": user.user_fullname
+                "userName": user.user_name
             })
         return data
 

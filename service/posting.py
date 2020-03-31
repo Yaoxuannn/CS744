@@ -116,6 +116,7 @@ class PostingService(object):
                     "postingType": posting.posting_type,
                     "topic": posting.posting_topic,
                     "senderID": posting.sender,
+                    "groupID": group_id,
                     "senderName": user_info['user_name'],
                     "posting_time": posting.posting_time.strftime("%m/%d/%Y %H:%M %p"),
                     "message": posting.message
@@ -132,6 +133,7 @@ class PostingService(object):
                     "postingID": posting.posting_id,
                     "postingType": posting.posting_type,
                     "postingStatus": posting.posting_status,
+                    "groupID": posting.group_id,
                     "topic": posting.posting_topic,
                     "senderID": posting.sender,
                     "senderName": user_info["user_name"],

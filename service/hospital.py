@@ -42,8 +42,8 @@ class HospitalService(object):
             return False
         check_user = self.querySession.query(HospitalUser).filter(HospitalUser.hospital_id == user_id).first()
         flag = True
-        if check_user.firstname != first_name:
+        if check_user.firstname.lower() != first_name.lower():
             flag = False
-        if check_user.lastname != last_name:
+        if check_user.lastname.lower() != last_name.lower():
             flag = False
         return flag
