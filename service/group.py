@@ -32,43 +32,33 @@ class UserGroup(Base):
 
 class GroupService(object):
     name = "group_service"
-    session = Session()
+    querySession = Session()
 
     @rpc
     def add_user_into_group(self, user_id):
+        session = Session()
         with ClusterRpcProxy(CONFIG) as _rpc:
             user_type = _rpc.user_service.check_user_type_by_id(user_id)
         if user_type in ["nurse", "admin", "physician"]:
-            self.session.add(UserGroup(
+            session.add(UserGroup(
                 user_id=user_id,
                 group_id="NPA"
             ))
         if user_type in ["patient", "admin", "physician"]:
-            self.session.add(UserGroup(
+            session.add(UserGroup(
                 user_id=user_id,
                 group_id="PPA"
             ))
-        self.commit()
+        session.commit()
 
     @rpc
     def get_group_by_user_id(self, user_id):
-        session = Session()
-        groups = session.query(UserGroup.group_id).filter(UserGroup.user_id == user_id).all()
+        groups = self.querySession.query(UserGroup.group_id).filter(UserGroup.user_id == user_id).all()
         data = []
         for gid in groups:
-            g_name = session.query(Group.group_name).filter(Group.group_id == gid[0]).first()
+            g_name = self.querySession.query(Group.group_name).filter(Group.group_id == gid[0]).first()
             data.append({
                 "gid": gid[0],
                 "groupName": g_name[0]
             })
         return data
-
-    @rpc
-    def commit(self):
-        self.session.commit()
-
-    @rpc
-    def rollback(self):
-        self.session.rollback()
-
-

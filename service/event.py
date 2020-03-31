@@ -1,12 +1,13 @@
 # coding=utf-8
-from nameko.rpc import rpc
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, Text, DateTime
 from datetime import datetime
-from time import time
 from hashlib import sha1
+from time import time
+
+from nameko.rpc import rpc
+from sqlalchemy import Column, Text, DateTime
+from sqlalchemy import create_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
 
 Base = declarative_base()
 engine = create_engine('sqlite:///../event.db')
@@ -29,7 +30,7 @@ class Event(Base):
 
 class EventService(object):
     name = "event_service"
-    session = Session()
+    querySession = Session()
 
     @staticmethod
     def generate_event_id():
@@ -39,8 +40,10 @@ class EventService(object):
         return "{}{}".format(now, sha1_obj.hexdigest()[:7])
 
     @rpc
-    def add_event(self, event_type, initiator, target=None, created_time=datetime.now(), event_status='processing', ts=False,
+    def add_event(self, event_type, initiator, target=None, created_time=datetime.now(), event_status='processing',
+                  ts=False,
                   operated=False, additional_info=None):
+        session = Session()
         event_id = self.generate_event_id()
         new_event = Event(
             event_id=event_id,
@@ -58,12 +61,13 @@ class EventService(object):
             new_event.created_time = created_time
             if operated:
                 new_event.operated_time = new_event.created_time
-        self.session.add(new_event)
+        session.add(new_event)
+        session.commit()
         return event_id
 
     @rpc
     def get_event_info(self, event_id):
-        check_event = self.session.query(Event).filter(Event.event_id == event_id).first()
+        check_event = self.querySession.query(Event).filter(Event.event_id == event_id).first()
         if check_event:
             return {
                 "event_id": check_event.event_id,
@@ -85,7 +89,8 @@ class EventService(object):
     @rpc
     def get_all_events(self, event_type, status='processing'):
         data = []
-        for event in self.session.query(Event).filter(Event.event_type == event_type, Event.event_status == status):
+        for event in self.querySession.query(Event).filter(Event.event_type == event_type,
+                                                           Event.event_status == status):
             data.append({
                 "event_id": event.event_id,
                 "initiator": event.initiator,
@@ -98,7 +103,7 @@ class EventService(object):
 
     @rpc
     def get_cite_event(self, posting_id):
-        cite_event = self.session.query(Event) \
+        cite_event = self.querySession.query(Event) \
             .filter(Event.event_type == 'cite') \
             .filter(Event.target == posting_id) \
             .filter(Event.event_status == 'processing') \
@@ -109,13 +114,15 @@ class EventService(object):
 
     @classmethod
     def operate_event(cls, event_id, status):
-        event = cls.session.query(Event).filter(Event.event_id == event_id).first()
+        session = Session()
+        event = session.query(Event).filter(Event.event_id == event_id).first()
         if not event:
             return False
         if event.event_status != "processing":
             return False
         event.event_status = status
         event.operated_time = datetime.now()
+        session.commit()
         return True
 
     @rpc
@@ -125,11 +132,3 @@ class EventService(object):
     @rpc
     def reject(self, event_id):
         return self.operate_event(event_id, "rejected")
-
-    @rpc
-    def commit(self):
-        self.session.commit()
-
-    @rpc
-    def rollback(self):
-        self.session.rollback()

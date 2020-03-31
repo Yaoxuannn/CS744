@@ -30,28 +30,20 @@ class HospitalUser(Base):
 
 class HospitalService(object):
     name = "hospital_service"
-    session = Session()
+    querySession = Session()
 
     @rpc
     def is_user_exist(self, user_id):
-        return self.session.query(exists().where(HospitalUser.hospital_id == user_id)).scalar()
+        return self.querySession.query(exists().where(HospitalUser.hospital_id == user_id)).scalar()
 
     @rpc
     def check_user_name(self, user_id, first_name, last_name):
         if not self.is_user_exist(user_id):
             return False
-        check_user = self.session.query(HospitalUser).filter(HospitalUser.hospital_id == user_id).first()
+        check_user = self.querySession.query(HospitalUser).filter(HospitalUser.hospital_id == user_id).first()
         flag = True
         if check_user.firstname != first_name:
             flag = False
         if check_user.lastname != last_name:
             flag = False
         return flag
-
-    @rpc
-    def rollback(self):
-        self.session.rollback()
-
-    @rpc
-    def commit(self):
-        self.session.commit()

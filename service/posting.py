@@ -46,7 +46,7 @@ class Reply(Base):
 
 class PostingService(object):
     name = "posting_service"
-    session = Session()
+    querySession = Session()
 
     @staticmethod
     def generate_posting_id():
@@ -64,6 +64,7 @@ class PostingService(object):
 
     @rpc
     def add_posting(self, sender_id, posting_type, topic, message, gid):
+        session = Session()
         with ClusterRpcProxy(CONFIG) as _rpc:
             user_type = _rpc.user_service.check_user_type_by_id(sender_id)
             if _rpc.keyword_service.check_discussion_posting(message, topic) is False:
@@ -93,16 +94,15 @@ class PostingService(object):
                                                             created_time=ts, ts=True)
                     new_posting.posting_status = "processing"
                 new_posting.event_id = event_id
-                _rpc.event_service.commit()
-        self.session.add(new_posting)
-        self.commit()
+        session.add(new_posting)
+        session.commit()
         if posting_type == 'dissemination':
             return True
         return event_id, new_posting.discussion_id, new_posting.posting_time
 
     @rpc
     def get_dissemination(self, group_id):
-        postings = self.session.query(Posting) \
+        postings = self.querySession.query(Posting) \
             .filter(Posting.posting_type == 'dissemination') \
             .filter(Posting.group_id == group_id) \
             .order_by(Posting.posting_time.desc()) \
@@ -158,7 +158,7 @@ class PostingService(object):
 
     @rpc
     def get_discussions(self, group_id):
-        postings = self.session.query(Posting) \
+        postings = self.querySession.query(Posting) \
             .filter(Posting.posting_type == 'discussion') \
             .filter(Posting.group_id == group_id) \
             .filter(or_(Posting.posting_status == "open", Posting.posting_status == "terminated")) \
@@ -169,7 +169,8 @@ class PostingService(object):
 
     @rpc
     def reply(self, sender_id, discussion_id, message):
-        discussion_posting = self.session.query(Posting).filter(Posting.discussion_id == discussion_id).first()
+        session = Session()
+        discussion_posting = self.querySession.query(Posting).filter(Posting.discussion_id == discussion_id).first()
         if discussion_posting is None:
             return None
         if discussion_posting.posting_status == "terminated":
@@ -184,13 +185,13 @@ class PostingService(object):
             posting_time=datetime.now(),
             message=message
         )
-        self.session.add(new_reply)
-        self.commit()
+        session.add(new_reply)
+        session.commit()
         return new_reply.posting_id, new_reply.posting_time.strftime("%m/%d/%Y %H:%M %p")
 
     @rpc
     def get_replies(self, discussion_id, limit=8, offset=0):
-        replies = self.session.query(Reply) \
+        replies = self.querySession.query(Reply) \
             .filter(Reply.discussion_id == discussion_id) \
             .order_by(Reply.posting_time.asc()) \
             .limit(limit) \
@@ -203,16 +204,16 @@ class PostingService(object):
         topic = None
         posting_type = ''
         posting_status = ''
-        target_posting = self.session.query(Posting).filter(Posting.posting_id == posting_id).first()
+        target_posting = self.querySession.query(Posting).filter(Posting.posting_id == posting_id).first()
         if target_posting:
             posting_status = target_posting.posting_status
             posting_type = target_posting.posting_type
         else:
-            target_posting = self.session.query(Reply).filter(Reply.posting_id == posting_id).first()
+            target_posting = self.querySession.query(Reply).filter(Reply.posting_id == posting_id).first()
             if target_posting:
                 posting_type = "discussion"
                 posting_status = ""
-                topic = self.session.query(Posting).filter(
+                topic = self.querySession.query(Posting).filter(
                     Posting.discussion_id == target_posting.discussion_id).first().posting_topic
         if target_posting:
             return {
@@ -228,7 +229,7 @@ class PostingService(object):
 
     @rpc
     def search_posting(self, gid, topic, start_date, end_date, sender):
-        posting_query = self.session.query(Posting) \
+        posting_query = self.querySession.query(Posting) \
             .filter(or_(Posting.posting_status == "open", Posting.posting_status == "terminated")) \
             .filter(Posting.group_id == gid)
         if start_date:
@@ -246,7 +247,7 @@ class PostingService(object):
 
     @rpc
     def search_replies(self, discussion_id, start_date, end_date, sender):
-        posting_query = self.session.query(Reply).filter(Reply.discussion_id == discussion_id)
+        posting_query = self.querySession.query(Reply).filter(Reply.discussion_id == discussion_id)
         if start_date:
             start_date = datetime.fromtimestamp(start_date)
             posting_query = posting_query.filter(Posting.posting_time >= start_date)
@@ -260,48 +261,49 @@ class PostingService(object):
 
     @rpc
     def approve_posting(self, posting_id):
-        target_posting = self.session.query(Posting).filter(Posting.posting_id == posting_id).first()
+        session = Session()
+        target_posting = session.query(Posting).filter(Posting.posting_id == posting_id).first()
         if target_posting:
             event_id = target_posting.event_id
             with ClusterRpcProxy(CONFIG) as _rpc:
                 if _rpc.event_service.approve(event_id):
                     target_posting.posting_status = "open"
-                    _rpc.event_service.commit()
-                    self.commit()
+                    session.commit()
                     return True
         return False
 
     @rpc
     def reject_posting(self, posting_id):
-        target_posting = self.session.query(Posting).filter(Posting.posting_id == posting_id).first()
+        session = Session()
+        target_posting = session.query(Posting).filter(Posting.posting_id == posting_id).first()
         if target_posting:
             event_id = target_posting.event_id
             with ClusterRpcProxy(CONFIG) as _rpc:
                 if _rpc.event_service.reject(event_id):
                     target_posting.posting_status = "rejected"
-                    _rpc.event_service.commit()
-                    self.commit()
+                    session.commit()
                     return True
         return False
 
     @rpc
     def remove_a_posting(self, posting_id):
-        deleted_posting = self.session.query(Reply).filter(Reply.posting_id == posting_id).first()
+        session = Session()
+        deleted_posting = session.query(Reply).filter(Reply.posting_id == posting_id).first()
         if deleted_posting:
-            self.session.delete(deleted_posting)
+            session.delete(deleted_posting)
         else:
-            deleted_posting = self.session.query(Posting).filter(Posting.posting_id == posting_id).first()
+            deleted_posting = session.query(Posting).filter(Posting.posting_id == posting_id).first()
             if not deleted_posting:
                 return None
             if deleted_posting.posting_type == 'dissemination':
-                self.session.delete(deleted_posting)
+                session.delete(deleted_posting)
             else:
-                deleted_replies = self.session.query(Reply).filter(
+                deleted_replies = session.query(Reply).filter(
                     Reply.discussion_id == deleted_posting.discussion_id).all()
-                self.session.delete(deleted_posting)
+                session.delete(deleted_posting)
                 for reply in deleted_replies:
-                    self.session.delete(reply)
-        self.commit()
+                    session.delete(reply)
+        session.commit()
         return {
             "posting_id": deleted_posting.posting_id,
             "sender": deleted_posting.sender,
@@ -315,7 +317,7 @@ class PostingService(object):
             posting_events = _rpc.event_service.get_all_events("posting")
             for p_event in posting_events:
                 sender_info = _rpc.user_service.get_user_info(p_event['initiator'])
-                posting_info = self.session.query(Posting).filter(Posting.event_id == p_event['event_id']).first()
+                posting_info = self.querySession.query(Posting).filter(Posting.event_id == p_event['event_id']).first()
                 posting_list.append({
                     "eventID": p_event['event_id'],
                     "postingID": posting_info.posting_id,
@@ -330,26 +332,19 @@ class PostingService(object):
 
     @rpc
     def has_this_posting(self, posting_id):
-        posting = self.session.query(Posting) \
+        posting = self.querySession.query(Posting) \
             .filter(Posting.posting_id == posting_id)
         if posting:
             return True
-        reply = self.session.query(Reply).filter(Reply.posting_id == posting_id).first()
+        reply = self.querySession.query(Reply).filter(Reply.posting_id == posting_id).first()
         if reply:
             return True
         return False
 
     @rpc
     def terminate_a_posting(self, posting_id):
-        target = self.session.query(Posting).filter(Posting.posting_id == posting_id).first()
+        session = Session()
+        target = session.query(Posting).filter(Posting.posting_id == posting_id).first()
         target.posting_status = "terminated"
-        self.commit()
+        session.commit()
         return True
-
-    @rpc
-    def commit(self):
-        self.session.commit()
-
-    @rpc
-    def rollback(self):
-        self.session.rollback()

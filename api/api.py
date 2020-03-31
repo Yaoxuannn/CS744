@@ -102,7 +102,7 @@ def get_register_list():
             for event in register_list:
                 user_info = rpc.user_service.get_user_info(event["target"])
                 if user_info['user_type'] == "patient":
-                    physician_id = user_info['associate_user']
+                    physician_id = user_info['associateID']
                 data.append({
                     "eventID": event['event_id'],
                     "userID": user_info['user_id'],
@@ -115,8 +115,7 @@ def get_register_list():
                     "isValid": rpc.hospital_service.is_user_exist(event['additional_info']),
                     "nameMatch": rpc.hospital_service.check_user_name(event['additional_info'], user_info['first_name'],
                                                                       user_info['last_name']),
-                    "physicianExist": rpc.hospital_service.is_user_exist(physician_id) if user_info[
-                                                                                              'user_type'] == "patient" else "",
+                    "physicianExist": rpc.hospital_service.is_user_exist(physician_id) if user_info['user_type'] == "patient" else "",
                     "registerTime": event['created_time']
                 })
             return pack_response(data={"register_list": data})
@@ -136,11 +135,7 @@ def approve_register():
                 rpc.group_service.add_user_into_group(operated_user_id)
                 if rpc.event_service.approve(request.args['eventID']) and \
                         rpc.user_service.verify_user(operated_user_id):
-                    rpc.event_service.commit()
-                    rpc.user_service.commit()
                     return pack_response()
-            rpc.event_service.rollback()
-            rpc.user_service.rollback()
             return pack_response(10003, "Data Error.")
     return pack_response(10002, "Missing argument")
 
@@ -155,11 +150,7 @@ def reject_register():
             event_info = rpc.event_service.get_event_info(request.args['eventID'])
             if rpc.event_service.reject(request.args['eventID']) and \
                     rpc.user_service.reject_user(event_info['target']):
-                rpc.event_service.commit()
-                rpc.user_service.commit()
                 return pack_response()
-            rpc.event_service.rollback()
-            rpc.user_service.rollback()
             return pack_response(10003, "Data Error")
     return pack_response(10002, "Missing argument")
 
@@ -356,7 +347,6 @@ def cite_posting():
             event_id = rpc.event_service.add_event("cite", request.args['userID'], request.args['postingID'],
                                                    additional_info=request.args['type'] + "@@" + request.args['reason'])
             if event_id:
-                rpc.event_service.commit()
                 return pack_response()
             return pack_response(10003, "Data Error")
     return pack_response(10002, "Missing Argument")
@@ -422,7 +412,6 @@ def ignore_cite():
             if user_type != "admin":
                 return pack_response(10001, "Not authorized")
             rpc.event_service.reject(request.args['eventID'])
-            rpc.event_service.commit()
             return pack_response()
     return pack_response(10002, "Missing Argument")
 
