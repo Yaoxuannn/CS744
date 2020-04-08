@@ -5,7 +5,7 @@ from time import time
 
 from nameko.rpc import rpc
 from nameko.standalone.rpc import ClusterRpcProxy
-from sqlalchemy import Column, Text, DateTime, or_
+from sqlalchemy import Column, Integer, Text, DateTime, or_
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -33,6 +33,32 @@ class Posting(Base):
     posting_status = Column(Text)
 
 
+class PrivateConversation(Base):
+    __tablename__ = "private_conversation"
+
+    conversation_id = Column(Text, primary_key=True)
+    event_id = Column(Text)
+    patient_id = Column(Text, nullable=False)
+    patient_valid = Column(Integer, default=0)
+    physician_id = Column(Text, nullable=False)
+    physician_valid = Column(Integer, default=0)
+    password = Column(Text, nullable=False)
+    posting_time = Column(DateTime)
+    topic = Column(Text)
+    message = Column(Text)
+    status = Column(Text)
+
+
+class PrivateMessage(Base):
+    __tablename__ = "private_message"
+
+    message_id = Column(Text, primary_key=True)
+    conversation_id = Column(Text)
+    sender = Column(Text, nullable=False)
+    posting_time = Column(DateTime)
+    message = Column(Text)
+
+
 class Reply(Base):
     __tablename__ = "reply"
 
@@ -56,11 +82,126 @@ class PostingService(object):
         return "p" + now + md5_obj.hexdigest()[:7]
 
     @staticmethod
+    def generate_conversation_id(patient_id, physician_id):
+        md5_obj = md5()
+        md5_obj.update(str(time()).encode())
+        md5_obj.update(str(patient_id).encode())
+        md5_obj.update(str(physician_id).encode())
+        return "c" + md5_obj.hexdigest()[:15]
+
+    @staticmethod
+    def generate_onetime_password():
+        md5_obj = md5()
+        md5_obj.update(str(time()).encode())
+        return "X" + md5_obj.hexdigest[:6] + "X"
+
+    @staticmethod
     def generate_discussion_id():
         now = datetime.now().strftime("%Y%m%d")
         md5_obj = md5()
         md5_obj.update(str(time()).encode())
         return 'd' + now + md5_obj.hexdigest()[:12]
+
+    @rpc
+    def add_private_conversation(self, patient_id, physician_id, topic, message):
+        session = Session()
+        with ClusterRpcProxy(CONFIG) as _rpc:
+            if _rpc.keyword_service.check_discussion_posting(message, topic) is False:
+                return False
+            new_conversation = PrivateConversation(
+                conversation_id=self.generate_conversation_id(patient_id, physician_id),
+                patient_id=patient_id,
+                physician_id=physician_id,
+                posting_time=datetime.now(),
+                topic=topic,
+                password=self.generate_onetime_password(),
+                message=message,
+                status="processing"
+            )
+            event_id = _rpc.event_service.add_event(
+                event_type="private_request",
+                initiator=patient_id,
+                target=physician_id,
+            )
+            new_conversation.event_id = event_id
+            session.add(new_conversation)
+            session.commit()
+            return True
+
+    @rpc
+    def send_private_message(self, conversation_id, sender_id, message):
+        session = Session()
+        with ClusterRpcProxy(CONFIG) as _rpc:
+            if _rpc.keyword_service.check_discussion_posting(message) is False:
+                return False
+            new_private_message = PrivateMessage(
+                message_id=self.generate_posting_id(),
+                conversation_id=conversation_id,
+                sender=sender_id,
+                posting_time=datetime.now(),
+                message=message
+            )
+            session.add(new_private_message)
+            session.commit()
+            return {
+                "messageID": new_private_message.message_id,
+                "posting_time": new_private_message.posting_time
+            }
+
+    @rpc
+    def validate_password(self, user_id, conversation_id, password):
+        session = Session()
+        target = session.query(PrivateConversation).filter(
+            PrivateConversation.conversation_id == conversation_id).first()
+        if not target:
+            return None
+        if target.password == password:
+            if target.patient_id == user_id:
+                target.patient_valid = 1
+            if target.physician_id == user_id:
+                target.physician_valid = 1
+            session.commit()
+            return True
+        return False
+
+    @rpc
+    def approve_conversation(self, event_id):
+        session = Session()
+        target = session.query(PrivateConversation).filter(PrivateConversation.event_id == event_id).first()
+        if not target:
+            return False
+        with ClusterRpcProxy(CONFIG) as _rpc:
+            _rpc.event_service.approve(event_id)
+            target.status = 'open'
+            session.commit()
+            event_info = _rpc.event_service.get_event_info(event_id)
+            patient_info = _rpc.user_service.get_user_info(event_info['initiator'])
+            physician_info = _rpc.user_service.get_user_info(event_info['target'])
+            _rpc.mail_service.send_mail(patient_info['email'], "APPROVED: Private Conversation Request",
+                                        "<b>Request approved</b><br/>Your private conversation request to {} is "
+                                        "approved by the administrator.<br/>One-time password: <b>{}</b>".format(
+                                            physician_info['user_name'], target.password
+                                        ))
+            return True
+
+    @rpc
+    def reject_conversation(self, event_id):
+        session = Session()
+        target = session.query(PrivateConversation).filter().first()
+        if not target:
+            return False
+        with ClusterRpcProxy(CONFIG) as _rpc:
+            _rpc.event_service.reject(event_id)
+            target.status = 'rejected'
+            session.commit()
+            event_info = _rpc.event_service.get_event_info(event_id)
+            patient_info = _rpc.user_service.get_user_info(event_info['initiator'])
+            physician_info = _rpc.user_service.get_user_info(event_info['target'])
+            _rpc.mail_service.send_mail(patient_info['email'], "REJECTED: Private Conversation Request",
+                                        "<b>Request Rejected</b><br/>We are sorry to tell you that your private "
+                                        "conversation request to %s is rejected by the administrator" %
+                                        physician_info['user_name'])
+            return True
 
     @rpc
     def add_posting(self, sender_id, posting_type, topic, message, gid):
@@ -168,6 +309,79 @@ class PostingService(object):
             .all()
         data = self.make_posting_info(postings)
         return data
+
+    @rpc
+    def get_private_conversation(self, user_id):
+        data = []
+        with ClusterRpcProxy(CONFIG) as _rpc:
+            conversation_list = self.querySession.query(PrivateConversation) \
+                .filter(or_(PrivateConversation.patient_id == user_id,
+                            PrivateConversation.physician_id == user_id)) \
+                .filter(PrivateConversation.status == 'open') \
+                .all()
+        for c_item in conversation_list:
+            with ClusterRpcProxy(CONFIG) as _rpc:
+                patient_info = _rpc.user_service.get_user_info(c_item.patient_id)
+                physician_info = _rpc.user_service.get_user_info(c_item.physician_id)
+            data.append({
+                "conversationID": c_item.conversation_id,
+                "patientID": c_item.patient_id,
+                "patientName": patient_info["user_name"],
+                "physicianID": c_item.physician_id,
+                "physicianName": physician_info["user_name"],
+                "posting_time": c_item.posting_time.strftime("%m/%d/%Y %H:%M %p"),
+                "topic": c_item.topic,
+                "message": c_item.message,
+                "status": c_item.status
+            })
+        return data
+
+    @rpc
+    def get_conversation_message(self, conversation_id):
+        data = []
+        messages = self.querySession.query(PrivateMessage) \
+            .filter(PrivateMessage.conversation_id == conversation_id) \
+            .order_by(PrivateMessage.posting_time.asc()) \
+            .all()
+        for msg in messages:
+            with ClusterRpcProxy(CONFIG) as _rpc:
+                sender_info = _rpc.user_service.get_user_info(msg.sender)
+            data.append({
+                "messageID": msg.message_id,
+                "senderID": msg.sender,
+                "senderName": sender_info['user_name'],
+                "posting_time": msg.posting_time.strftime("%m/%d/%Y %H:%M %p"),
+                "message": msg.message
+            })
+
+    @rpc
+    def terminate_private_conversation(self, conversation_id):
+        session = Session()
+        target = session.query(PrivateConversation).filter(
+            PrivateConversation.conversation_id == conversation_id).first()
+        target.posting_status = "terminated"
+        session.commit()
+        return True
+
+    @rpc
+    def logout_private_conversations(self, user_id):
+        session = Session()
+        conversations = session.query(PrivateConversation) \
+            .filter(or_(PrivateConversation.patient_id == user_id, PrivateConversation.physician_id == user_id)).all()
+        for c in conversations:
+            self.terminate_private_conversation(c.conversation_id)
+
+    @rpc
+    def get_conversation_status(self, conversation_id):
+        target = self.querySession.query(PrivateConversation).filter(
+            PrivateConversation.conversation_id == conversation_id).first()
+        if not target:
+            return None
+        return {
+            "status": target.status,
+            "patient_valid": target.patient_valid,
+            "physician_valid": target.physician_valid
+        }
 
     @rpc
     def reply(self, sender_id, discussion_id, message):
@@ -315,8 +529,10 @@ class PostingService(object):
     @rpc
     def get_posting_list(self):
         posting_list = []
+        private_list = []
         with ClusterRpcProxy(CONFIG) as _rpc:
             posting_events = _rpc.event_service.get_all_events("posting")
+            private_events = _rpc.event_service.get_all_events("private_request")
             for p_event in posting_events:
                 sender_info = _rpc.user_service.get_user_info(p_event['initiator'])
                 posting_info = self.querySession.query(Posting).filter(Posting.event_id == p_event['event_id']).first()
@@ -330,7 +546,23 @@ class PostingService(object):
                     "topic": posting_info.posting_topic,
                     "message": posting_info.message
                 })
-            return posting_list
+            for c_event in private_events:
+                conversation_info = self.querySession.query(PrivateConversation).filter(
+                    PrivateConversation.event_id == c_event['event_id']).first()
+                patient_info = _rpc.user_service.get_user_info(c_event['initiator'])
+                physician_info = _rpc.user_service.get_user_info(c_event['target'])
+                private_list.append({
+                    "eventID": c_event['event_id'],
+                    "conversationID": conversation_info.conversation_id,
+                    "patientID": c_event['initiator'],
+                    "patientName": patient_info['user_name'],
+                    "patientEmail": patient_info['email'],
+                    "physicianID": c_event['target'],
+                    "physicianName": physician_info['user_name'],
+                    "physicianEmail": physician_info['email'],
+                    "request_time": c_event['created_time']
+                })
+            return posting_list, private_list
 
     @rpc
     def has_this_posting(self, posting_id):

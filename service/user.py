@@ -221,6 +221,8 @@ class UserService(object):
         if not logged_user:
             session.close()
             return False
+        with ClusterRpcProxy(CONFIG) as _rpc:
+            _rpc.posting_service.logout_private_conversations(logged_user.user_id)
         logged_user.user_token = None
         logged_user.login_code = None
         session.commit()

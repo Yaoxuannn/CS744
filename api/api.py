@@ -115,7 +115,8 @@ def get_register_list():
                     "isValid": rpc.hospital_service.is_user_exist(event['additional_info']),
                     "nameMatch": rpc.hospital_service.check_user_name(event['additional_info'], user_info['first_name'],
                                                                       user_info['last_name']),
-                    "physicianExist": rpc.hospital_service.is_user_exist(physician_id) if user_info['user_type'] == "patient" else "",
+                    "physicianExist": rpc.hospital_service.is_user_exist(physician_id) if user_info[
+                                                                                              'user_type'] == "patient" else "",
                     "registerTime": event['created_time']
                 })
             return pack_response(data={"register_list": data})
@@ -203,6 +204,114 @@ def add_posting():
     return pack_response(10002, "Missing argument")
 
 
+@app.route("/api/v1/private/request", methods=['POST'])
+def request_private_conversation():
+    if check_params(request.json, ['patientID', 'physicianID', 'topic', 'message']):
+        with ClusterRpcProxy(CONFIG) as rpc:
+            result = rpc.posting_service.add_private_conversation(
+                request.args['patientID'],
+                request.args['physicianID'],
+                request.args['topic'],
+                request.args['message']
+            )
+            if result is False:
+                return pack_response(10002, "No keywords found")
+            return pack_response()
+    return pack_response(10002, "Missing argument")
+
+
+@app.route("/api/v1/private/getConversations", methods=['GET'])
+def get_private_conversations():
+    if check_params(request.args, ['userID']):
+        with ClusterRpcProxy(CONFIG) as rpc:
+            data = rpc.posting_service.get_private_conversation(request.args['userID'])
+            return pack_response(data={"conversation_list": data})
+    return pack_response(10002, "Missing argument")
+
+
+@app.route("/api/v1/private/terminate", methods=['GET'])
+def terminate_private_conversation():
+    if check_params(request.args, ['userID', 'conversationID']):
+        with ClusterRpcProxy(CONFIG) as rpc:
+            rpc.posting_service.terminate_private_conversation(request.args['conversationID'])
+            return pack_response()
+    return pack_response(10002, "Missing argument")
+
+
+@app.route("/api/v1/private/approve", methods=['GET'])
+def approve_private_conversation():
+    if check_params(request.args, ['token', 'eventID']):
+        with ClusterRpcProxy(CONFIG) as rpc:
+            user_type = rpc.user_service.check_user_type_by_token(request.args["token"])
+            if user_type != "admin":
+                return pack_response(10001, "Not authorized")
+            if rpc.posting_service.approve_conversation(request.args['eventID']):
+                return pack_response()
+            return pack_response(10003, "Data Error")
+    return pack_response(10002, "Missing argument")
+
+
+@app.route("/api/v1/private/reject", methods=['GET'])
+def reject_private_conversation():
+    if check_params(request.args, ['token', 'eventID']):
+        with ClusterRpcProxy(CONFIG) as rpc:
+            user_type = rpc.user_service.check_user_type_by_token(request.args["token"])
+            if user_type != "admin":
+                return pack_response(10001, "Not authorized")
+            if rpc.posting_service.reject_conversation(request.args['eventID']):
+                return pack_response()
+            return pack_response(10003, "Data Error")
+    return pack_response(10002, "Missing argument")
+
+
+@app.route("/api/v1/private/validate", methods=['GET'])
+def validate_private_conversation():
+    if check_params(request.args, ['userID', 'conversationID', 'password']):
+        with ClusterRpcProxy(CONFIG) as rpc:
+            result = rpc.posting_service.validate_password(
+                request.args['userId'],
+                request.args['conversationID'],
+                request.args['password']
+            )
+            if result is None:
+                return pack_response(10002, "Wrong argument")
+            if result is False:
+                return pack_response(10001, "Password Wrong")
+            if result is True:
+                return pack_response()
+    return pack_response(10002, "Missing argument")
+
+
+@app.route("/api/v1/private/send", methods=['GET'])
+def send_private_message():
+    if check_params(request.args, ['conversationID', 'userID', 'message']):
+        with ClusterRpcProxy(CONFIG) as rpc:
+            c_info = rpc.posting_service.get_conversation_status(request.args['conversationID'])
+            if c_info['status'] == "open":
+                result = rpc.posting_service.send_private_message(
+                    request.args['conversationID'],
+                    request.args['userID'],
+                    request.args['message']
+                )
+                if result is False:
+                    return pack_response(10002, "No Keyword Found")
+                return pack_response(data=result)
+    return pack_response(10002, "Missing argument")
+
+
+@app.route("/api/v1/private/getMessage", methods=['GET'])
+def get_private_messages():
+    if check_params(request.args, ['conversationID', 'userID']):
+        with ClusterRpcProxy(CONFIG) as rpc:
+            c_info = rpc.posting_service.get_conversation_status(request.args['conversationID'])
+            user_type = rpc.user_service.check_user_type_by_id(request.args['userID'])
+            if c_info[user_type + "_valid"] == 0:
+                return pack_response(10001, "Validation first!")
+            result = rpc.posting_service.get_conversation_message(request.args['conversationID'])
+            return pack_response(data={"message_list": result})
+    return pack_response(10002, "Missing Argument")
+
+
 @app.route("/api/v1/getPosting", methods=['GET'])
 def get_posting():
     if check_params(request.args, ["type", "userID"]):
@@ -259,9 +368,10 @@ def get_posting_list():
             user_type = rpc.user_service.check_user_type_by_token(request.args["token"])
             if user_type != "admin":
                 return pack_response(10001, "Not authorized")
-            data = rpc.posting_service.get_posting_list()
-        if data:
-            return pack_response(data={"posting_list": data})
+            posting_list, private_list = rpc.posting_service.get_posting_list()
+        if posting_list:
+            return pack_response(data={"posting_list": posting_list,
+                                       "private_list": private_list})
         return pack_response(10003, "Empty Data")
     return pack_response(10002, "Missing Argument")
 
@@ -425,7 +535,8 @@ def terminate_posting():
             if target_posting is None:
                 return pack_response(10002, "Posting ID error.")
             if target_posting['posting_type'] == "discussion" and target_posting['posting_status'] == "open":
-                if target_posting['sender'] == request.args['userID']:
+                user_type = rpc.user_service.check_user_type_by_id(request.args['userID'])
+                if target_posting['sender'] == request.args['userID'] or user_type == 'admin':
                     rpc.posting_service.terminate_a_posting(request.args["postingID"])
                     return pack_response()
             return pack_response(10002, "Not authorized or argument error")

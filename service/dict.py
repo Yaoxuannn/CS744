@@ -49,7 +49,7 @@ class KeywordService(object):
         session = Session()
         if self.has_this_keyword(keyword) is None:
             return False
-        deleted_word = self.querySession.query(Keyword).filter(Keyword.keyword == keyword.lower()).first()
+        deleted_word = session.query(Keyword).filter(Keyword.keyword == keyword.lower()).first()
         session.delete(deleted_word)
         session.commit()
         return True
