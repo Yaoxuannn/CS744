@@ -5,7 +5,7 @@ from time import time
 
 from nameko.rpc import rpc
 from nameko.standalone.rpc import ClusterRpcProxy
-from sqlalchemy import Column, Integer, Text, DateTime, or_
+from sqlalchemy import Column, Integer, Text, DateTime, or_, func
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -582,3 +582,37 @@ class PostingService(object):
         target.posting_status = "terminated"
         session.commit()
         return True
+
+    @rpc
+    def counting_info(self, user_id, start_time, end_time):
+
+        total_dissemination = self.querySession.query(Posting) \
+            .filter(Posting.posting_time > start_time) \
+            .filter(Posting.posting_time < end_time) \
+            .filter(Posting.posting_type == 'dissemination')
+        n_total_dissemination = self.get_count(total_dissemination)
+        n_user_dissemination = self.get_count(total_dissemination.filter(Posting.sender == user_id))
+        total_discussion = self.querySession.query(Posting) \
+            .filter(Posting.posting_time > start_time) \
+            .filter(Posting.posting_time < end_time) \
+            .filter(Posting.posting_type == 'discussion') \
+            .filter(Posting.posting_status == 'open')
+        n_total_discussion = self.get_count(total_discussion)
+        n_user_discussion = self.get_count(total_discussion.filter(Posting.sender == user_id))
+        n_involved_user = self.get_count(self.querySession.query(Reply.sender)
+                                         .filter(Reply.posting_time > start_time)
+                                         .filter(Reply.posting_time < end_time)
+                                         .distinct())
+        return {
+            "total_dissemination": n_total_dissemination,
+            "total_discussion": n_total_discussion,
+            "user_dissemination": n_user_dissemination,
+            "user_discussion": n_user_discussion,
+            "involved_user": n_involved_user
+        }
+
+    @staticmethod
+    def get_count(q):
+        count_q = q.statement.with_only_columns([func.count()]).order_by(None)
+        count = q.session.execute(count_q).scalar()
+        return count

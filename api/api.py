@@ -581,6 +581,26 @@ def remove_a_keyword():
     return pack_response(10002, "Missing Argument")
 
 
+@app.route("/api/v1/getReport", methods=['GET'])
+def get_report():
+    # 需要的信息:
+    # 总dissemination/总discussion
+    # 这个用户的dissemination/这个用户的dissemination
+    # discussion里面参与的用户数量
+    if check_params(request.args, ['userID', 'start', 'end', 'token']):
+        with ClusterRpcProxy(CONFIG) as rpc:
+            user_type = rpc.user_service.check_user_type_by_token(request.args["token"])
+            if user_type != "admin":
+                return pack_response(10001, "Not authorized")
+            report = rpc.posting_service.counting_info(
+                request.args['userID'],
+                request.args['start'],
+                request.args['end']
+            )
+            return pack_response(data=report)
+    return pack_response(10002, "Missing Argument")
+
+
 def check_params(params, essentials):
     for n in essentials:
         if n not in params:
