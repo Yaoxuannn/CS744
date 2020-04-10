@@ -417,6 +417,7 @@ class PostingService(object):
 
     @rpc
     def get_posting_info(self, posting_id):
+        data = {}
         topic = None
         posting_type = ''
         posting_status = ''
@@ -424,6 +425,11 @@ class PostingService(object):
         if target_posting:
             posting_status = target_posting.posting_status
             posting_type = target_posting.posting_type
+            if posting_type == 'discussion':
+                data.update({
+                    "discussion_id": target_posting.discussion_id,
+                    "group_id": target_posting.group_id
+                })
         else:
             target_posting = self.querySession.query(Reply).filter(Reply.posting_id == posting_id).first()
             if target_posting:
@@ -432,7 +438,7 @@ class PostingService(object):
                 topic = self.querySession.query(Posting).filter(
                     Posting.discussion_id == target_posting.discussion_id).first().posting_topic
         if target_posting:
-            return {
+            data.update({
                 "posting_id": target_posting.posting_id,
                 "posting_type": posting_type,
                 "sender": target_posting.sender,
@@ -440,7 +446,8 @@ class PostingService(object):
                 "topic": topic if topic else target_posting.posting_topic,
                 "message": target_posting.message,
                 "posting_status": posting_status
-            }
+            })
+            return data
         return None
 
     @rpc

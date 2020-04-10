@@ -583,10 +583,6 @@ def remove_a_keyword():
 
 @app.route("/api/v1/getReport", methods=['GET'])
 def get_report():
-    # 需要的信息:
-    # 总dissemination/总discussion
-    # 这个用户的dissemination/这个用户的dissemination
-    # discussion里面参与的用户数量
     if check_params(request.args, ['userID', 'start', 'end', 'token']):
         with ClusterRpcProxy(CONFIG) as rpc:
             user_type = rpc.user_service.check_user_type_by_token(request.args["token"])
@@ -598,6 +594,75 @@ def get_report():
                 request.args['end']
             )
             return pack_response(data=report)
+    return pack_response(10002, "Missing Argument")
+
+
+@app.route("/api/v1/removePosting", methods=['GET'])
+def remove_a_posting():
+    if check_params(request.args, ['postingID', 'token']):
+        with ClusterRpcProxy(CONFIG) as rpc:
+            user_type = rpc.user_service.check_user_type_by_token(request.args["token"])
+            if user_type != "admin":
+                return pack_response(10001, "Not authorized")
+            rpc.posting_service.remove_a_posting(request.args['postingID'])
+            return pack_response()
+    return pack_response(10002, "Missing Argument")
+
+
+@app.route("/api/v1/archivePosting", methods=['GET'])
+def archive_posting():
+    if check_params(request.args, ['postingID', 'token']):
+        with ClusterRpcProxy(CONFIG) as rpc:
+            user_type = rpc.user_service.check_user_type_by_token(request.args["token"])
+            if user_type != "admin":
+                return pack_response(10001, "Not authorized")
+            result = rpc.archive_service.archive(request.args['postingID'])
+            if result is not None:
+                return pack_response()
+            return pack_response(10003, "Data Error")
+    return pack_response(10002, "Missing Argument")
+
+
+@app.route("/api/v1/searchArchivedPosting", methods=['GET'])
+def search_archived_posting():
+    if check_params(request.json, ['token', 'topic', 'from', 'to', 'sender']):
+        data = []
+        with ClusterRpcProxy(CONFIG) as rpc:
+            user_type = rpc.user_service.check_user_type_by_token(request.args["token"])
+            if user_type != "admin":
+                return pack_response(10001, "Not authorized")
+            start_date = transfer_timestamp(request.json['from'])
+            end_date = transfer_timestamp(request.json['to'])
+            if start_date is False or end_date is False:
+                return pack_response(10002, "Argument Format Error")
+            postings = rpc.archive_service.search_posting(
+                request.json['topic'],
+                start_date,
+                end_date,
+                request.json['sender']
+            )
+            for posting in postings:
+                replies = rpc.archive_service.get_replies(posting['discussion_id'])
+                if len(replies) > 0:
+                    posting.update({"replies": replies})
+                data.append(posting)
+            if len(data) == 0:
+                return pack_response(msg="No result")
+            return pack_response(data={"result": data})
+    return pack_response(10002, "Missing Argument")
+
+
+@app.route("/api/v1/retrieveArchivedPosting", methods=['GET'])
+def retrieve_archived_posting():
+    if check_params(request.args, ['', 'token']):
+        with ClusterRpcProxy(CONFIG) as rpc:
+            user_type = rpc.user_service.check_user_type_by_token(request.args["token"])
+            if user_type != "admin":
+                return pack_response(10001, "Not authorized")
+            user_type = rpc.user_service.check_user_type_by_token(request.args["token"])
+            if user_type != "admin":
+                return pack_response(10001, "Not authorized")
+            return pack_response(00000, "Under Developing")
     return pack_response(10002, "Missing Argument")
 
 
