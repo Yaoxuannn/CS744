@@ -93,7 +93,7 @@ class PostingService(object):
     def generate_onetime_password():
         md5_obj = md5()
         md5_obj.update(str(time()).encode())
-        return "X" + md5_obj.hexdigest[:6] + "X"
+        return "X" + md5_obj.hexdigest()[:6] + "X"
 
     @staticmethod
     def generate_discussion_id():
@@ -181,6 +181,11 @@ class PostingService(object):
                                         "<b>Request approved</b><br/>Your private conversation request to {} is "
                                         "approved by the administrator.<br/>One-time password: <b>{}</b>".format(
                                             physician_info['user_name'], target.password
+                                        ))
+            _rpc.mail_service.send_mail(physician_info['email'], "APPROVED: Private Conversation Request",
+                                        "<b>Request approved</b><br/>{} private conversation request to you is "
+                                        "approved by the administrator.<br/>One-time password: <b>{}</b>".format(
+                                            patient_info['user_name'], target.password
                                         ))
             return True
 
@@ -353,15 +358,20 @@ class PostingService(object):
                 "posting_time": msg.posting_time.strftime("%m/%d/%Y %H:%M %p"),
                 "message": msg.message
             })
+        return data
 
     @rpc
     def terminate_private_conversation(self, conversation_id):
         session = Session()
         target = session.query(PrivateConversation).filter(
             PrivateConversation.conversation_id == conversation_id).first()
-        target.posting_status = "terminated"
-        session.commit()
-        return True
+        if target:
+            target.status = "terminated"
+            session.commit()
+            return True
+        else:
+            session.close()
+            return False
 
     @rpc
     def logout_private_conversations(self, user_id):
@@ -592,7 +602,10 @@ class PostingService(object):
 
     @rpc
     def counting_info(self, user_id, start_time, end_time):
-
+        if start_time:
+            start_time = datetime.fromtimestamp(start_time)
+        if end_time:
+            start_time = datetime.fromtimestamp(end_time)
         total_dissemination = self.querySession.query(Posting) \
             .filter(Posting.posting_time > start_time) \
             .filter(Posting.posting_time < end_time) \

@@ -81,9 +81,13 @@ class UserService(object):
         return data
 
     @rpc
-    def search_user(self, username):
+    def search_user(self, username, usertype):
         data = []
-        users = self.querySession.query(User).filter(User.user_name.like("%" + username + "%")).all()
+        users = self.querySession.query(User) \
+            .filter(User.user_name.like("%" + username + "%")) \
+            .filter(User.user_status == 'approved')
+        if usertype:
+            users = users.filter(User.user_type == usertype)
         for user in users:
             data.append({
                 "userID": user.user_id,

@@ -3,7 +3,7 @@ from datetime import datetime
 
 from nameko.rpc import rpc
 from nameko.standalone.rpc import ClusterRpcProxy
-from sqlalchemy import Column, Text
+from sqlalchemy import Column, Text, DateTime
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -21,7 +21,7 @@ class ArchivedPosting(Base):
 
     posting_id = Column(Text, primary_key=True)
     sender = Column(Text, nullable=False)
-    posting_time = Column(Text)
+    posting_time = Column(DateTime)
     posting_topic = Column(Text)
     message = Column(Text, nullable=False)
     group_id = Column(Text, nullable=False)
@@ -34,7 +34,7 @@ class ArchivedReply(Base):
     posting_id = Column(Text, primary_key=True)
     discussion_id = Column(Text, nullable=False)
     sender = Column(Text, nullable=False)
-    posting_time = Column(Text)
+    posting_time = Column(DateTime)
     message = Column(Text, nullable=False)
 
 
@@ -52,7 +52,7 @@ class ArchiveService(object):
             new_archived_posting = ArchivedPosting(
                 posting_id=posting['posting_id'],
                 sender=posting['sender'],
-                posting_time=posting['posting_time'],
+                posting_time=datetime.strptime(posting['posting_time'], "%m/%d/%Y %H:%M %p"),
                 posting_topic=posting['topic'],
                 message=posting['message'],
                 group_id=posting['group_id'],
@@ -65,7 +65,7 @@ class ArchiveService(object):
                     posting_id=reply['postingID'],
                     discussion_id=posting['discussion'],
                     sender=reply['senderID'],
-                    posting_time=reply['posting_time'],
+                    posting_time=datetime.strptime(reply['posting_time'], "%m/%d/%Y %H:%M %p"),
                     message=reply['message']
                 ))
             session.commit()
@@ -84,7 +84,7 @@ class ArchiveService(object):
                     "topic": posting.posting_topic,
                     "senderID": posting.sender,
                     "senderName": user_info["user_name"],
-                    "posting_time": posting.posting_time,
+                    "posting_time": posting.posting_time.strftime("%m/%d/%Y %H:%M %p"),
                     "message": posting.message,
                     "discussion_id": posting.discussion_id,
                 })
@@ -101,7 +101,7 @@ class ArchiveService(object):
                     "senderID": r.sender,
                     "senderName": user_info['user_name'],
                     "message": r.message,
-                    "posting_time": r.posting_time
+                    "posting_time": r.posting_time.strftime("%m/%d/%Y %H:%M %p")
                 })
         return data
 

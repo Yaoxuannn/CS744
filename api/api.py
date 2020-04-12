@@ -209,10 +209,10 @@ def request_private_conversation():
     if check_params(request.json, ['patientID', 'physicianID', 'topic', 'message']):
         with ClusterRpcProxy(CONFIG) as rpc:
             result = rpc.posting_service.add_private_conversation(
-                request.args['patientID'],
-                request.args['physicianID'],
-                request.args['topic'],
-                request.args['message']
+                request.json['patientID'],
+                request.json['physicianID'],
+                request.json['topic'],
+                request.json['message']
             )
             if result is False:
                 return pack_response(10002, "No keywords found")
@@ -233,8 +233,10 @@ def get_private_conversations():
 def terminate_private_conversation():
     if check_params(request.args, ['userID', 'conversationID']):
         with ClusterRpcProxy(CONFIG) as rpc:
-            rpc.posting_service.terminate_private_conversation(request.args['conversationID'])
-            return pack_response()
+            result = rpc.posting_service.terminate_private_conversation(request.args['conversationID'])
+            if result:
+                return pack_response()
+            return pack_response(10003, "Data Error")
     return pack_response(10002, "Missing argument")
 
 
@@ -269,7 +271,7 @@ def validate_private_conversation():
     if check_params(request.args, ['userID', 'conversationID', 'password']):
         with ClusterRpcProxy(CONFIG) as rpc:
             result = rpc.posting_service.validate_password(
-                request.args['userId'],
+                request.args['userID'],
                 request.args['conversationID'],
                 request.args['password']
             )
@@ -287,6 +289,9 @@ def send_private_message():
     if check_params(request.args, ['conversationID', 'userID', 'message']):
         with ClusterRpcProxy(CONFIG) as rpc:
             c_info = rpc.posting_service.get_conversation_status(request.args['conversationID'])
+            user_type = rpc.user_service.check_user_type_by_id(request.args['userID'])
+            if c_info[user_type + "_valid"] == 0:
+                return pack_response(10001, "Validation first!")
             if c_info['status'] == "open":
                 result = rpc.posting_service.send_private_message(
                     request.args['conversationID'],
@@ -369,7 +374,7 @@ def get_posting_list():
             if user_type != "admin":
                 return pack_response(10001, "Not authorized")
             posting_list, private_list = rpc.posting_service.get_posting_list()
-        if posting_list:
+        if posting_list or private_list:
             return pack_response(data={"posting_list": posting_list,
                                        "private_list": private_list})
         return pack_response(10003, "Empty Data")
@@ -404,9 +409,12 @@ def reject_posting():
 
 @app.route("/api/v1/searchUser", methods=['GET'])
 def search_user():
-    if check_params(request.args, ['username']):
+    if check_params(request.args, ['username', 'usertype']):
         with ClusterRpcProxy(CONFIG) as rpc:
-            like_users = rpc.user_service.search_user(request.args["username"])
+            like_users = rpc.user_service.search_user(
+                request.args["username"],
+                request.args["usertype"]
+            )
             return pack_response(data={"users": like_users})
     return pack_response(10002, "Missing Argument")
 
@@ -588,12 +596,16 @@ def get_report():
             user_type = rpc.user_service.check_user_type_by_token(request.args["token"])
             if user_type != "admin":
                 return pack_response(10001, "Not authorized")
-            report = rpc.posting_service.counting_info(
-                request.args['userID'],
-                request.args['start'],
-                request.args['end']
-            )
-            return pack_response(data=report)
+            start_time = transfer_timestamp(request.args['start'])
+            end_time = transfer_timestamp(request.args['end'])
+            if start_time and end_time:
+                report = rpc.posting_service.counting_info(
+                    request.args['userID'],
+                    start_time,
+                    end_time
+                )
+                return pack_response(data=report)
+            return pack_response(10002, "Time format error")
     return pack_response(10002, "Missing Argument")
 
 
@@ -604,8 +616,11 @@ def remove_a_posting():
             user_type = rpc.user_service.check_user_type_by_token(request.args["token"])
             if user_type != "admin":
                 return pack_response(10001, "Not authorized")
-            rpc.posting_service.remove_a_posting(request.args['postingID'])
-            return pack_response()
+            info = rpc.posting_service.get_posting_info(request.args['postingID'])
+            if info['posting_status'] == 'terminated':
+                rpc.posting_service.remove_a_posting(request.args['postingID'])
+                return pack_response()
+            return pack_response(10002, "Need to be terminated first")
     return pack_response(10002, "Missing Argument")
 
 
@@ -623,9 +638,9 @@ def archive_posting():
     return pack_response(10002, "Missing Argument")
 
 
-@app.route("/api/v1/searchArchivedPosting", methods=['GET'])
+@app.route("/api/v1/searchArchivedPosting", methods=['POST'])
 def search_archived_posting():
-    if check_params(request.json, ['token', 'topic', 'from', 'to', 'sender']):
+    if check_params(request.json, ['topic', 'from', 'to', 'sender']) and check_params(request.args, ['token']):
         data = []
         with ClusterRpcProxy(CONFIG) as rpc:
             user_type = rpc.user_service.check_user_type_by_token(request.args["token"])
@@ -635,7 +650,7 @@ def search_archived_posting():
             end_date = transfer_timestamp(request.json['to'])
             if start_date is False or end_date is False:
                 return pack_response(10002, "Argument Format Error")
-            postings = rpc.archive_service.search_posting(
+            postings = rpc.archive_service.search_archived_posting(
                 request.json['topic'],
                 start_date,
                 end_date,
@@ -649,20 +664,6 @@ def search_archived_posting():
             if len(data) == 0:
                 return pack_response(msg="No result")
             return pack_response(data={"result": data})
-    return pack_response(10002, "Missing Argument")
-
-
-@app.route("/api/v1/retrieveArchivedPosting", methods=['GET'])
-def retrieve_archived_posting():
-    if check_params(request.args, ['', 'token']):
-        with ClusterRpcProxy(CONFIG) as rpc:
-            user_type = rpc.user_service.check_user_type_by_token(request.args["token"])
-            if user_type != "admin":
-                return pack_response(10001, "Not authorized")
-            user_type = rpc.user_service.check_user_type_by_token(request.args["token"])
-            if user_type != "admin":
-                return pack_response(10001, "Not authorized")
-            return pack_response(00000, "Under Developing")
     return pack_response(10002, "Missing Argument")
 
 
