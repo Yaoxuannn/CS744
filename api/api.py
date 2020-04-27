@@ -233,6 +233,10 @@ def get_private_conversations():
 def terminate_private_conversation():
     if check_params(request.args, ['userID', 'conversationID']):
         with ClusterRpcProxy(CONFIG) as rpc:
+            c_info = rpc.posting_service.get_conversation_status(request.args['conversationID'])
+            user_type = rpc.user_service.check_user_type_by_id(request.args['userID'])
+            if c_info[user_type + "_valid"] == 0:
+                return pack_response(10001, "Validation first!")
             result = rpc.posting_service.terminate_private_conversation(request.args['conversationID'])
             if result:
                 return pack_response()
@@ -325,10 +329,19 @@ def get_posting():
             groups = rpc.group_service.get_group_by_user_id(request.args['userID'])
             if request.args['type'] == "dissemination":
                 for g in groups:
-                    posting_data.append(rpc.posting_service.get_dissemination(g['gid']))
+                    result = rpc.posting_service.get_dissemination(g['gid'])
+                    for r in result:
+                        r.update({
+                            "groupName": g['groupName']
+                        })
+                    posting_data.append(result)
             else:
                 for g in groups:
                     p_data = rpc.posting_service.get_discussions(g['gid'])
+                    for discussion in p_data:
+                        discussion.update({
+                            "groupName": g['groupName']
+                        })
                     posting_data.extend(p_data)
                 if len(posting_data) == 0:
                     return pack_response(10003, "Empty Data")
@@ -616,11 +629,8 @@ def remove_a_posting():
             user_type = rpc.user_service.check_user_type_by_token(request.args["token"])
             if user_type != "admin":
                 return pack_response(10001, "Not authorized")
-            info = rpc.posting_service.get_posting_info(request.args['postingID'])
-            if info['posting_status'] == 'terminated':
-                rpc.posting_service.remove_a_posting(request.args['postingID'])
-                return pack_response()
-            return pack_response(10002, "Need to be terminated first")
+            rpc.posting_service.remove_a_posting(request.args['postingID'])
+            return pack_response()
     return pack_response(10002, "Missing Argument")
 
 
@@ -631,10 +641,13 @@ def archive_posting():
             user_type = rpc.user_service.check_user_type_by_token(request.args["token"])
             if user_type != "admin":
                 return pack_response(10001, "Not authorized")
-            result = rpc.archive_service.archive(request.args['postingID'])
-            if result is not None:
-                return pack_response()
-            return pack_response(10003, "Data Error")
+            info = rpc.posting_service.get_posting_info(request.args['postingID'])
+            if info['posting_status'] == 'terminated':
+                result = rpc.archive_service.archive(request.args['postingID'])
+                if result is not None:
+                    return pack_response()
+                return pack_response(10003, "Posting type error or Data Error")
+            return pack_response(10002, "Need to be terminated first")
     return pack_response(10002, "Missing Argument")
 
 
@@ -720,11 +733,11 @@ def clean_params(params):
 def options_handler():
     if request.method == "OPTIONS":
         res = pack_response()
-        res.headers['Access-Control-Allow-Methods'] = "GET, POST"
-        res.headers['Access-Control-Allow-Headers'] = 'content-type'
-        res.headers['Access-Control-Allow-Credentials'] = "true"
-        res.headers['Access-Control-Allow-Origin'] = "*"
-        res.headers['Access-Control-Max-Age'] = "1728000"
+        # res.headers['Access-Control-Allow-Methods'] = "GET, POST, OPTIONS"
+        # res.headers['Access-Control-Allow-Headers'] = 'content-type'
+        # res.headers['Access-Control-Allow-Credentials'] = "true"
+        # res.headers['Access-Control-Allow-Origin'] = "*"
+        # res.headers['Access-Control-Max-Age'] = "1728000"
         return res
     else:
         pass

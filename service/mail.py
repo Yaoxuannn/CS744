@@ -1,8 +1,8 @@
 # coding=utf-8
-from nameko.rpc import rpc
 import yagmail
+from nameko.rpc import rpc
 
-yag = yagmail.SMTP("camellia.userservice@gmail.com", "Camellia_service")
+yag = yagmail.SMTP("camellia.userservice@gmail.com", oauth2_file='./oauth2_creds.json')
 
 
 class MailService(object):

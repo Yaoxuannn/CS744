@@ -577,7 +577,9 @@ class PostingService(object):
                     "physicianID": c_event['target'],
                     "physicianName": physician_info['user_name'],
                     "physicianEmail": physician_info['email'],
-                    "request_time": c_event['created_time']
+                    "request_time": c_event['created_time'],
+                    "topic": conversation_info.topic,
+                    "message": conversation_info.message
                 })
             return posting_list, private_list
 
@@ -605,7 +607,7 @@ class PostingService(object):
         if start_time:
             start_time = datetime.fromtimestamp(start_time)
         if end_time:
-            start_time = datetime.fromtimestamp(end_time)
+            end_time = datetime.fromtimestamp(end_time)
         total_dissemination = self.querySession.query(Posting) \
             .filter(Posting.posting_time > start_time) \
             .filter(Posting.posting_time < end_time) \

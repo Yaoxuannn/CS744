@@ -56,13 +56,11 @@ class KeywordService(object):
 
     @rpc
     def check_discussion_posting(self, message, topic=None):
-        for word in message.split(" "):
-            match = self.querySession.query(Keyword).filter(Keyword.keyword == word.lower()).first()
-            if match is not None:
+        for result in self.querySession.query(Keyword):
+            if message.find(result.keyword) >= 0:
                 return True
         if topic:
-            for word in topic.split(" "):
-                match = self.querySession.query(Keyword).filter(Keyword.keyword == word.lower()).first()
-                if match is not None:
+            for result in self.querySession.query(Keyword):
+                if topic.find(result.keyword) >= 0:
                     return True
         return False

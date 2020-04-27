@@ -33,7 +33,6 @@ class User(Base):
     user_status = Column(Text, default=0)
     user_token = Column(Text, unique=True)
     user_type = Column(Text, nullable=False)
-    last_read_posting_id = Column(Text)
     login_code = Column(Text)
     addition_info = Column(Text)
     associate_user = Column(Text)
@@ -87,11 +86,14 @@ class UserService(object):
             .filter(User.user_name.like("%" + username + "%")) \
             .filter(User.user_status == 'approved')
         if usertype:
-            users = users.filter(User.user_type == usertype)
+            users = self.querySession.query(User) \
+                .filter(User.user_fullname.like("%" + username + "%")) \
+                .filter(User.user_status == 'approved') \
+                .filter(User.user_type == usertype)
         for user in users:
             data.append({
                 "userID": user.user_id,
-                "userName": user.user_name
+                "userName": user.user_fullname
             })
         return data
 
@@ -186,7 +188,7 @@ class UserService(object):
         target_user = self.querySession.query(User).filter(User.user_name == username).first()
         if self.querySession.query(UserSecret).filter(UserSecret.user_id == target_user.user_id,
                                                       UserSecret.secret == password).first():
-            if target_user.user_token:
+            if target_user.user_token and target_user.login_code is None:
                 return 10001, "User need to be logged out first.", None, None
             self.sha1.update((username + str(time())).encode())
             token = self.sha1.digest().hex()

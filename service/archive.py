@@ -49,6 +49,8 @@ class ArchiveService(object):
             posting = _rpc.posting_service.get_posting_info(posting_id)
             if posting is None:
                 return None
+            if posting['posting_type'] != 'discussion':
+                return None
             new_archived_posting = ArchivedPosting(
                 posting_id=posting['posting_id'],
                 sender=posting['sender'],
@@ -63,7 +65,7 @@ class ArchiveService(object):
             for reply in replies:
                 session.add(ArchivedReply(
                     posting_id=reply['postingID'],
-                    discussion_id=posting['discussion'],
+                    discussion_id=posting['discussion_id'],
                     sender=reply['senderID'],
                     posting_time=datetime.strptime(reply['posting_time'], "%m/%d/%Y %H:%M %p"),
                     message=reply['message']
